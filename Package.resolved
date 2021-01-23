@@ -2,12 +2,21 @@
   "object": {
     "pins": [
       {
+        "package": "BigInt",
+        "repositoryURL": "https://github.com/attaswift/BigInt.git",
+        "state": {
+          "branch": null,
+          "revision": "889a1ecacd73ccc189c5cb29288048f186c44ed9",
+          "version": "5.2.1"
+        }
+      },
+      {
         "package": "swift-crypto",
         "repositoryURL": "https://github.com/apple/swift-crypto.git",
         "state": {
           "branch": null,
-          "revision": "d67ac68d09a95443303e9d6e37b34e7ba101d5f1",
-          "version": "1.0.1"
+          "revision": "8f4bfa5bc1951440c15710e9e893721aa4b2765c",
+          "version": "1.1.3"
         }
       },
       {
@@ -15,17 +24,17 @@
         "repositoryURL": "https://github.com/apple/swift-nio.git",
         "state": {
           "branch": null,
-          "revision": "c5fa0b456524cd73dc3ddbb263d4f46c20b86ca3",
-          "version": "2.17.0"
+          "revision": "43931b7a7daf8120a487601530c8bc03ce711992",
+          "version": "2.25.1"
         }
       },
       {
         "package": "swift-nio-ssh",
-        "repositoryURL": "https://github.com/apple/swift-nio-ssh.git",
+        "repositoryURL": "https://github.com/joannis/swift-nio-ssh.git",
         "state": {
-          "branch": null,
-          "revision": "166dcf1bfa17174d6b26d500e436fc4cddd9efaf",
-          "version": "0.0.2"
+          "branch": "jo-rsa-private-keys",
+          "revision": "17f5cadd0499fce5a18bdc8107ba150e0e2c24bb",
+          "version": null
         }
       }
     ]

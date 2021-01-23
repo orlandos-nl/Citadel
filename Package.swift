@@ -13,11 +13,13 @@ let package = Package(
         // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(
             name: "Citadel",
-            targets: ["Citadel"]),
+            targets: ["Citadel"]
+        ),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        .package(url: "https://github.com/apple/swift-nio-ssh.git", from: "0.0.2")
+        .package(url: "https://github.com/joannis/swift-nio-ssh.git", .revision("jo-rsa-private-keys")),
+            .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -25,8 +27,10 @@ let package = Package(
         .target(
             name: "Citadel",
             dependencies: [
-            .product(name: "NIOSSH", package: "swift-nio-ssh")
-        ]),
+                .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "BigInt", package: "BigInt"),
+            ]
+        ),
         .testTarget(
             name: "CitadelTests",
             dependencies: ["Citadel"]),
