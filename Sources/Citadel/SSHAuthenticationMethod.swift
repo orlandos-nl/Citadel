@@ -2,7 +2,7 @@ import NIO
 import NIOSSH
 import Crypto
 
-public struct AuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
+public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
     private let username: String
     private let offer: NIOSSHUserAuthenticationOffer.Offer
     
@@ -11,24 +11,24 @@ public struct AuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
         self.offer = offer
     }
     
-    public static func passwordBased(username: String, password: String) -> AuthenticationMethod {
-        return AuthenticationMethod(username: username, offer: .password(.init(password: password)))
+    public static func passwordBased(username: String, password: String) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(username: username, offer: .password(.init(password: password)))
     }
     
-    public static func ed25519(username: String, privateKey: Curve25519.Signing.PrivateKey) -> AuthenticationMethod {
-        return AuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(ed25519Key: privateKey))))
+    public static func ed25519(username: String, privateKey: Curve25519.Signing.PrivateKey) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(ed25519Key: privateKey))))
     }
     
-    public static func p256(username: String, privateKey: P256.Signing.PrivateKey) -> AuthenticationMethod {
-        return AuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p256Key: privateKey))))
+    public static func p256(username: String, privateKey: P256.Signing.PrivateKey) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p256Key: privateKey))))
     }
     
-    public static func p384(username: String, privateKey: P384.Signing.PrivateKey) -> AuthenticationMethod {
-        return AuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p384Key: privateKey))))
+    public static func p384(username: String, privateKey: P384.Signing.PrivateKey) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p384Key: privateKey))))
     }
     
-    public static func p521(username: String, privateKey: P521.Signing.PrivateKey) -> AuthenticationMethod {
-        return AuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p521Key: privateKey))))
+    public static func p521(username: String, privateKey: P521.Signing.PrivateKey) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p521Key: privateKey))))
     }
     
     public func nextAuthenticationType(

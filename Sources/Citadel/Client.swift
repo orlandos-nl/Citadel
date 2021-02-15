@@ -6,8 +6,8 @@ public final class SSHClient {
     private var userInitiatedClose = false
     let host: String
     let port: Int
-    let authenticationMethod: AuthenticationMethod
-    let hostKeyValidator: HostKeyValidator
+    let authenticationMethod: SSHAuthenticationMethod
+    let hostKeyValidator: SSHHostKeyValidator
     public var connectionSettings = SSHConnectionSettings()
     public var eventLoop: EventLoop {
         session.channel.eventLoop
@@ -17,8 +17,8 @@ public final class SSHClient {
         session: SSHClientSession,
         host: String,
         port: Int,
-        authenticationMethod: AuthenticationMethod,
-        hostKeyValidator: HostKeyValidator
+        authenticationMethod: SSHAuthenticationMethod,
+        hostKeyValidator: SSHHostKeyValidator
     ) {
         self.session = session
         self.host = host
@@ -30,8 +30,8 @@ public final class SSHClient {
     public static func connect(
         host: String,
         port: Int = 22,
-        authenticationMethod: AuthenticationMethod,
-        hostKeyValidator: HostKeyValidator,
+        authenticationMethod: SSHAuthenticationMethod,
+        hostKeyValidator: SSHHostKeyValidator,
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
     ) -> EventLoopFuture<SSHClient> {
         return SSHClientSession.connect(

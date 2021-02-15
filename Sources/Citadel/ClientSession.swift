@@ -21,8 +21,8 @@ final class SSHClientSession {
     public static func connect(
         host: String,
         port: Int = 22,
-        authenticationMethod: AuthenticationMethod,
-        hostKeyValidator: HostKeyValidator,
+        authenticationMethod: SSHAuthenticationMethod,
+        hostKeyValidator: SSHHostKeyValidator,
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     ) -> EventLoopFuture<SSHClientSession> {
         let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
@@ -54,7 +54,7 @@ final class SSHClientSession {
 
 public struct InvalidHostKey: Error {}
 
-public struct HostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
+public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
     private enum Method {
         case trustedKeys(Set<NIOSSHPublicKey>)
         case acceptAnything
@@ -78,15 +78,15 @@ public struct HostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
         }
     }
     
-    public static func trustedKeys(_ keys: Set<NIOSSHPublicKey>) -> HostKeyValidator {
-        HostKeyValidator(method: .trustedKeys(keys))
+    public static func trustedKeys(_ keys: Set<NIOSSHPublicKey>) -> SSHHostKeyValidator {
+        SSHHostKeyValidator(method: .trustedKeys(keys))
     }
     
-    public static func acceptAnything() -> HostKeyValidator {
-        HostKeyValidator(method: .acceptAnything)
+    public static func acceptAnything() -> SSHHostKeyValidator {
+        SSHHostKeyValidator(method: .acceptAnything)
     }
     
-    public static func custom(_ validator: NIOSSHClientServerAuthenticationDelegate) -> HostKeyValidator {
-        HostKeyValidator(method: .custom(validator))
+    public static func custom(_ validator: NIOSSHClientServerAuthenticationDelegate) -> SSHHostKeyValidator {
+        SSHHostKeyValidator(method: .custom(validator))
     }
 }
