@@ -55,45 +55,8 @@ let pool = MongoSingleConnectionPool(
                 originatorAddress: address
             )
         )
-    }.flatMap { sshChannel in
-        let context = MongoClientContext(logger: .defaultMongoCore)
-        
-        return sshChannel.pipeline.handler(type: NIOSSHHandler.self).flatMap { sshHandler in
-            // The address that is presented as the locally exposed interface
-            // This is purely communicated to the SSH server
-            let address: SocketAddress
-            
-            do {
-                address = try SocketAddress(ipAddress: "fe80::1", port: 27017)
-            } catch {
-                return sshChannel.eventLoop.makeFailedFuture(SSHClientError.invalidOriginAddress)
-            }
-            
-            let promise = sshChannel.eventLoop.makePromise(of: Channel.self)
-            
-            sshHandler.createChannel(
-                promise, 
-                channelType: .directTCPIP(
-                    SSHChannelType.DirectTCPIP(
-                        targetHost: host.hostname, 
-                        targetPort: host.port, 
-                        originatorAddress: address
-                    )
-                )
-            ) { childChannel, channelType in
-                guard case .directTCPIP = channelType else {
-                    return sshChannel.eventLoop.makeFailedFuture(SSHClientError.invalidChannelType)
-                }
-                
-                return childChannel.pipeline.addHandler(DataToBufferCodec()).flatMap {
-                    MongoConnection.addHandlers(to: childChannel, context: context)
-                }
-            }
-            
-            return promise.futureResult.map { childChannel in
-                return MongoConnection(channel: childChannel, context: context)
-            }
-        }
+    }.flatMap { childChannel in
+        MongoConnection.addHandlers(to: childChannel, context: context)
     }
 }
 ```
