@@ -15,6 +15,10 @@ public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
         return SSHAuthenticationMethod(username: username, offer: .password(.init(password: password)))
     }
     
+    public static func rsa(username: String, privateKey: Insecure.RSA.Signing.PrivateKey) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(custom: privateKey))))
+    }
+    
     public static func ed25519(username: String, privateKey: Curve25519.Signing.PrivateKey) -> SSHAuthenticationMethod {
         return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(ed25519Key: privateKey))))
     }
