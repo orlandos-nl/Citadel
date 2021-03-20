@@ -19,6 +19,29 @@ final class SSHClientSession {
     }
     
     public static func connect(
+        on channel: Channel,
+        authenticationMethod: SSHAuthenticationMethod,
+        hostKeyValidator: SSHHostKeyValidator
+    ) -> EventLoopFuture<SSHClientSession> {
+        channel.pipeline.addHandler(
+            NIOSSHHandler(
+                role: .client(
+                    .init(
+                        userAuthDelegate: authenticationMethod,
+                        serverAuthDelegate: hostKeyValidator
+                    )
+                ),
+                allocator: channel.allocator,
+                inboundChildChannelInitializer: nil
+            )
+        ).flatMap {
+            channel.pipeline.handler(type: NIOSSHHandler.self).map { sshHandler in
+                SSHClientSession(channel: channel, sshHandler: sshHandler)
+            }
+        }
+    }
+    
+    public static func connect(
         host: String,
         port: Int = 22,
         authenticationMethod: SSHAuthenticationMethod,

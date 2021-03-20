@@ -1,13 +1,20 @@
-import Crypto
-import NIOSSH
 import BigInt
-import NIO
 import Foundation
-import NIOFoundationCompat
+import Crypto
+import NIO
+import NIOSSH
 
 struct InvalidKey: Error {}
 
-extension NIOSSHPrivateKey {
+extension Insecure.RSA.Signing.PrivateKey {
+    public init(sshRsa data: Data) throws {
+        if let string = String(data: data, encoding: .utf8) {
+            try self.init(sshRsa: string)
+        } else {
+            throw InvalidKey()
+        }
+    }
+    
     public init(sshRsa key: String) throws {
         var key = key.replacingOccurrences(of: "\n", with: "")
         
@@ -83,28 +90,28 @@ extension NIOSSHPrivateKey {
         
         guard
             let n2DataLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let n2Data = privateKeyBuffer.readData(length: Int(n2DataLength)),
+            let _ = privateKeyBuffer.readData(length: Int(n2DataLength)),
             let e2DataLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let e2Data = privateKeyBuffer.readData(length: Int(e2DataLength)),
+            let _ = privateKeyBuffer.readData(length: Int(e2DataLength)),
             let dLength = privateKeyBuffer.readInteger(as: UInt32.self),
             let dData = privateKeyBuffer.readData(length: Int(dLength)),
             let iqmpLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let iqmpData = privateKeyBuffer.readData(length: Int(iqmpLength)),
+            let _ = privateKeyBuffer.readData(length: Int(iqmpLength)),
             let pLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let pData = privateKeyBuffer.readData(length: Int(pLength)),
+            let _ = privateKeyBuffer.readData(length: Int(pLength)),
             let qLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let qData = privateKeyBuffer.readData(length: Int(qLength)),
+            let _ = privateKeyBuffer.readData(length: Int(qLength)),
             let commentLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let comment = privateKeyBuffer.readString(length: Int(commentLength))
+            let _ = privateKeyBuffer.readString(length: Int(commentLength))
         else {
             throw InvalidKey()
         }
         
         let d = BigUInt(dData)
         
-        let e2 = BigUInt(e2Data)
-        let n2 = BigUInt(n2Data)
-        
-        self.init(custom: Insecure.RSA.Signing.PrivateKey(privateExponent: d, publicExponent: e, modulus: n))
+//        let e2 = BigUInt(e2Data)
+//        let n2 = BigUInt(n2Data)
+//
+        self.init(privateExponent: d, publicExponent: e, modulus: n)
     }
 }
