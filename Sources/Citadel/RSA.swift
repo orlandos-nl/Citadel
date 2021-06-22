@@ -35,7 +35,7 @@ extension Insecure.RSA.Signing {
             self.modulus = modulus
         }
         
-        public func encrypt<D: DataProtocol>(for message: D) throws -> EncrytpedMessage {
+        public func encrypt<D: DataProtocol>(for message: D) throws -> EncryptedMessage {
             let message = BigUInt(Data(message))
             
             guard message > .zero && message <= modulus - 1 else {
@@ -43,7 +43,7 @@ extension Insecure.RSA.Signing {
             }
             
             let result = message.power(publicExponent, modulus: modulus)
-            return EncrytpedMessage(rawRepresentation: result.serialize())
+            return EncryptedMessage(rawRepresentation: result.serialize())
         }
         
         public func isValidSignature<D: DataProtocol>(_ signature: Signature, for digest: D) -> Bool {
@@ -88,7 +88,7 @@ extension Insecure.RSA.Signing {
         }
     }
     
-    public struct EncrytpedMessage: ContiguousBytes {
+    public struct EncryptedMessage: ContiguousBytes {
         public let rawRepresentation: Data
         
         public init<D>(rawRepresentation: D) where D : DataProtocol {
@@ -232,8 +232,8 @@ extension Insecure.RSA.Signing {
             }
         }
         
-        public func decrypt(_ signature: EncrytpedMessage) throws -> Data {
-            let signature = BigUInt(signature.rawRepresentation)
+        public func decrypt(_ message: EncryptedMessage) throws -> Data {
+            let signature = BigUInt(message.rawRepresentation)
             
             switch storage {
             case let .privateExponent(privateExponent, modulus):
