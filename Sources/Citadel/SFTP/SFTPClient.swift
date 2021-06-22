@@ -188,7 +188,11 @@ final class SFTPInboundHandler: ChannelInboundHandler {
             responses.initialized.succeed(version)
         } else if case .status(let status) = message {
             if let promise = responses.responses[status.requestId] {
-                promise.fail(status)
+                if status.errorCode == 0 {
+                    promise.succeed(.status(status))
+                } else {
+                    promise.fail(status)
+                }
             } else {
                 context.fireErrorCaught(SFTPError.noResponseTarget)
             }
