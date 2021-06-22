@@ -84,6 +84,24 @@ public final class SFTPClient {
         }
     }
     
+    func writeFile(
+        handle: ByteBuffer,
+        data: ByteBuffer,
+        offset: UInt64,
+        length: UInt32
+    ) -> EventLoopFuture<Void> {
+        return sendRequest(
+            .write(
+                .init(
+                    requestId: nextRequestId(),
+                    handle: handle,
+                    offset: offset,
+                    data: data
+                )
+            )
+        ).map { _ in }
+    }
+    
     public func openFile(
         filePath: String,
         flags: SFTPOpenFileFlags,
