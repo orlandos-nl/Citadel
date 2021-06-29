@@ -24,16 +24,16 @@
         "repositoryURL": "https://github.com/apple/swift-nio.git",
         "state": {
           "branch": null,
-          "revision": "3be4e0980075de10a4bc8dee07491d49175cfd7a",
-          "version": "2.27.0"
+          "revision": "d79e33308b0ac83326b0ead0ea6446e604b8162d",
+          "version": "2.30.0"
         }
       },
       {
         "package": "swift-nio-ssh",
-        "repositoryURL": "https://github.com/Joannis/swift-nio-ssh-1.git",
+        "repositoryURL": "https://github.com/Joannis/swift-nio-ssh.git",
         "state": {
           "branch": "jo-rsa-private-keys",
-          "revision": "497919b07b8679cb65c88c8037f99bffddc15c50",
+          "revision": "a742b44f3201b434a05066dcc1f174f52e0aa5b8",
           "version": null
         }
       }

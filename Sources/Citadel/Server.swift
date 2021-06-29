@@ -5,6 +5,14 @@ public protocol SSHServerDelegate: NIOSSHServerUserAuthenticationDelegate, Globa
     func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType) -> EventLoopFuture<Void>
 }
 
+final class CloseErrorHandler: ChannelInboundHandler {
+    typealias InboundIn = Any
+    
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        context.close(promise: nil)
+    }
+}
+
 public final class SSHServer {
     let channel: Channel
     

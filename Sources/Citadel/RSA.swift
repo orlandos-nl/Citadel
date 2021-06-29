@@ -7,12 +7,10 @@ import Foundation
 import Crypto
 
 extension Insecure {
-    public enum RSA {
-        public enum Signing {}
-    }
+    public enum RSA {}
 }
 
-extension Insecure.RSA.Signing {
+extension Insecure.RSA {
     public struct PublicKey: Equatable, Hashable, NIOSSHPublicKeyProtocol {
         public static let publicKeyPrefix = "ssh-rsa"
         
@@ -73,7 +71,7 @@ extension Insecure.RSA.Signing {
             return writtenBytes
         }
         
-        public static func read(from buffer: inout ByteBuffer) throws -> Insecure.RSA.Signing.PublicKey {
+        public static func read(from buffer: inout ByteBuffer) throws -> Insecure.RSA.PublicKey {
             guard
                 let publicExponent = buffer.readPositiveMPInt(),
                 let modulus = buffer.readPositiveMPInt()

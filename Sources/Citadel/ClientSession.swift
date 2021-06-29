@@ -1,13 +1,37 @@
 import NIO
 import NIOSSH
 
-internal final class CloseErrorHandler: ChannelInboundHandler {
+final class ClientHandshakeHandler: ChannelInboundHandler {
     typealias InboundIn = Any
 
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        context.close(promise: nil)
+    private let promise: EventLoopPromise<Void>
+    public var authenticated: EventLoopFuture<Void> {
+        promise.futureResult
+    }
+
+    init(eventLoop: EventLoop) {
+        let promise = eventLoop.makePromise(of: Void.self)
+        self.promise = promise
+        
+        struct AuthenticationFailed: Error {}
+        eventLoop.scheduleTask(in: .seconds(10)) {
+            promise.fail(AuthenticationFailed())
+        }
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if event is UserAuthSuccessEvent {
+            self.promise.succeed(())
+        }
+    }
+    
+    deinit {
+        struct Disconnected: Error {}
+        self.promise.fail(Disconnected())
     }
 }
+
+//final class
 
 final class SSHClientSession {
     let channel: Channel
@@ -23,7 +47,8 @@ final class SSHClientSession {
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator
     ) -> EventLoopFuture<SSHClientSession> {
-        channel.pipeline.addHandler(
+        let handshakeHandler = ClientHandshakeHandler(eventLoop: channel.eventLoop)
+        return channel.pipeline.addHandlers(
             NIOSSHHandler(
                 role: .client(
                     .init(
@@ -33,8 +58,11 @@ final class SSHClientSession {
                 ),
                 allocator: channel.allocator,
                 inboundChildChannelInitializer: nil
-            )
+            ),
+            handshakeHandler
         ).flatMap {
+            handshakeHandler.authenticated
+        }.flatMap {
             channel.pipeline.handler(type: NIOSSHHandler.self).map { sshHandler in
                 SSHClientSession(channel: channel, sshHandler: sshHandler)
             }
@@ -48,6 +76,7 @@ final class SSHClientSession {
         hostKeyValidator: SSHHostKeyValidator,
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     ) -> EventLoopFuture<SSHClientSession> {
+        let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
         let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
             channel.pipeline.addHandlers([
                 NIOSSHHandler(
@@ -60,7 +89,7 @@ final class SSHClientSession {
                     allocator: channel.allocator,
                     inboundChildChannelInitializer: nil
                 ),
-                CloseErrorHandler()
+                handshakeHandler
             ])
         }
         .connectTimeout(.seconds(30))
@@ -68,7 +97,9 @@ final class SSHClientSession {
         .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
         
         return bootstrap.connect(host: host, port: port).flatMap { channel in
-            return channel.pipeline.handler(type: NIOSSHHandler.self).map { sshHandler in
+            return handshakeHandler.authenticated.flatMap {
+                channel.pipeline.handler(type: NIOSSHHandler.self)
+            }.map { sshHandler in
                 SSHClientSession(channel: channel, sshHandler: sshHandler)
             }
         }
