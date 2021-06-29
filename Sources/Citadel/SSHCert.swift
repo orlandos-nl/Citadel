@@ -6,7 +6,7 @@ import NIOSSH
 
 struct InvalidKey: Error {}
 
-extension Insecure.RSA.Signing.PrivateKey {
+extension Insecure.RSA.PrivateKey {
     public init(sshRsa data: Data) throws {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshRsa: string)

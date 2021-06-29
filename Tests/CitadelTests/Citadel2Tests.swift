@@ -26,12 +26,12 @@ final class Citadel2Tests: XCTestCase {
     func testSFTP() throws {
         let ssh = try SSHClient.connect(
           host: "orlandos.nl",
-          authenticationMethod: .passwordBased(username: "joannis", password: "*ootEenz!8H@iu9PUfXkiD7.Gp8!ptJAcs3"),
+          authenticationMethod: .passwordBased(username: "<user>", password: "<pass>"),
           hostKeyValidator: .acceptAnything(), // It's easy, but you should put your hostkey signature in here
           reconnect: .never
         ).wait()
         let sftp = try ssh.openSFTP().wait()
-        let fileHandle = try sftp.openFile(filePath: "/home/joannis/test", flags: [.write, .create]).wait()
+        let fileHandle = try sftp.openFile(filePath: "/home/<user>/test", flags: [.write, .create]).wait()
         try fileHandle.write(at: 0, data: ByteBuffer(string: "Hello")).wait()
     }
 

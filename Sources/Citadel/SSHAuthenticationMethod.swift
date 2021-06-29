@@ -6,7 +6,10 @@ public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
     private let username: String
     private let offer: NIOSSHUserAuthenticationOffer.Offer
     
-    internal init(username: String, offer: NIOSSHUserAuthenticationOffer.Offer) {
+    internal init(
+        username: String,
+        offer: NIOSSHUserAuthenticationOffer.Offer
+    ) {
         self.username = username
         self.offer = offer
     }
@@ -15,7 +18,7 @@ public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
         return SSHAuthenticationMethod(username: username, offer: .password(.init(password: password)))
     }
     
-    public static func rsa(username: String, privateKey: Insecure.RSA.Signing.PrivateKey) -> SSHAuthenticationMethod {
+    public static func rsa(username: String, privateKey: Insecure.RSA.PrivateKey) -> SSHAuthenticationMethod {
         return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(custom: privateKey))))
     }
     
@@ -51,7 +54,7 @@ public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
                 return
             }
         case .privateKey:
-            guard availableMethods.contains(.password) else {
+            guard availableMethods.contains(.publicKey) else {
                 nextChallengePromise.fail(SSHClientError.unsupportedPrivateKeyAuthentication)
                 return
             }
