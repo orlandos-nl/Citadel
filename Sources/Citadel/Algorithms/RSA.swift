@@ -13,9 +13,10 @@ extension Insecure {
 extension Insecure.RSA {
     public struct PublicKey: Equatable, Hashable, NIOSSHPublicKeyProtocol {
         public static let publicKeyPrefix = "ssh-rsa"
+        public static let keyExchangeAlgorithms = ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1"]
         
         // PublicExponent e
-        private let publicExponent: BigUInt
+        fileprivate let publicExponent: BigUInt
         
         // Modulus n
         private let modulus: BigUInt
@@ -240,6 +241,13 @@ extension Insecure.RSA {
                 }
                 
                 return signature.power(privateExponent, modulus: modulus).serialize()
+            }
+        }
+        
+        internal func generatedSharedSecret(with publicKey: PublicKey) -> Data {
+            switch storage {
+            case let .privateExponent(d: privateExponent, n: modulus):
+                return privateExponent.power(publicKey.publicExponent, modulus: modulus).serialize()
             }
         }
     }

@@ -1,7 +1,9 @@
+import Crypto
 import BigInt
 import NIO
 import XCTest
 @testable import Citadel
+import NIOSSH
 
 final class Citadel2Tests: XCTestCase {
     func testBigIntSerialization() {
@@ -24,15 +26,24 @@ final class Citadel2Tests: XCTestCase {
     }
   
     func testSFTP() throws {
+        NIOSSHAlgoritms.register(
+            publicKey: Insecure.RSA.PublicKey.self,
+            signature: Insecure.RSA.Signature.self
+        )
+        
+        NIOSSHAlgoritms.register(transportProtectionScheme: AES256CTR.self)
+        
+        NIOSSHAlgoritms.register(keyExchangeAlgorithm: DiffieHellmanGroup1Sha1.self)
+        
+//        HMAC<SHA1>
+        
         let ssh = try SSHClient.connect(
-          host: "orlandos.nl",
-          authenticationMethod: .passwordBased(username: "<user>", password: "<pass>"),
+          host: "xyz",
+          authenticationMethod: .passwordBased(username: "joannis", password: "spoof"),
           hostKeyValidator: .acceptAnything(), // It's easy, but you should put your hostkey signature in here
           reconnect: .never
         ).wait()
         let sftp = try ssh.openSFTP().wait()
-        let fileHandle = try sftp.openFile(filePath: "/home/<user>/test", flags: [.write, .create]).wait()
-        try fileHandle.write(at: 0, data: ByteBuffer(string: "Hello")).wait()
     }
 
 //    static var allTests = [
