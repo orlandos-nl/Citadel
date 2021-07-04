@@ -41,8 +41,8 @@
         "package": "swift-nio-ssh",
         "repositoryURL": "https://github.com/Joannis/swift-nio-ssh.git",
         "state": {
-          "branch": "jo-rsa-private-keys",
-          "revision": "569c03ed4ecea460e7b827f933e490641e6d7a61",
+          "branch": null,
+          "revision": "3837545ba7b26913b8d8c51f791d87bc89590caa",
           "version": null
         }
       }
