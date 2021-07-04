@@ -54,9 +54,6 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
     private var sharedSecret: Data?
     public let ourKey: Insecure.RSA.PrivateKey
     public static var ourKey: Insecure.RSA.PrivateKey?
-    public let privateKey: UnsafeMutablePointer<BIGNUM>
-    public let publicKey: UnsafeMutablePointer<BIGNUM>
-    public let group: UnsafeMutablePointer<BIGNUM>
     
     private struct _KeyExchangeResult {
         var sessionID: ByteBuffer
@@ -68,34 +65,12 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         self.ourRole = ourRole
         self.previousSessionIdentifier = previousSessionIdentifier
         self.ourKey = Self.ourKey ?? Insecure.RSA.PrivateKey()
-        
-        self.privateKey = CCryptoBoringSSL_BN_new()
-        self.publicKey = CCryptoBoringSSL_BN_new()
-        self.group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)
-        let generator = CCryptoBoringSSL_BN_bin2bn(generator2, generator2.count, nil)
-        let bignumContext = CCryptoBoringSSL_BN_CTX_new()
-        
-        guard
-            CCryptoBoringSSL_BN_rand(privateKey, 256 * 8 - 1, 0, /*-1*/BN_RAND_BOTTOM_ANY) == 1,
-            CCryptoBoringSSL_BN_mod_exp(publicKey, generator, privateKey, group, bignumContext) == 1
-        else {
-            fatalError()
-        }
-        
-        CCryptoBoringSSL_BN_CTX_free(bignumContext)
-        CCryptoBoringSSL_BN_free(generator)
-    }
-    
-    deinit {
-        CCryptoBoringSSL_BN_free(privateKey)
-        CCryptoBoringSSL_BN_free(group)
-        CCryptoBoringSSL_BN_free(publicKey)
     }
     
     public func initiateKeyExchangeClientSide(allocator: ByteBufferAllocator) -> ByteBuffer {
         var buffer = allocator.buffer(capacity: 256)
         
-        buffer.writeBignum(publicKey)
+        buffer.writeBignum(ourKey._publicKey.modulus)
         return buffer
     }
     
@@ -150,14 +125,16 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         let ctx = CCryptoBoringSSL_BN_CTX_new()
         defer { CCryptoBoringSSL_BN_CTX_free(ctx) }
         
+        let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)
+        defer { CCryptoBoringSSL_BN_free(group) }
+        
         guard CCryptoBoringSSL_BN_mod_exp(
             secret,
             serverPublicKey,
-            privateKey,
+            ourKey.privateExponent,
             group,
             ctx
         ) == 1 else {
-            CCryptoBoringSSL_BN_free(secret)
             fatalError()
         }
         
@@ -175,20 +152,17 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         initialExchangeBytes.writeCompositeSSHString {
             serverHostKey.write(to: &$0)
         }
-        print(initialExchangeBytes.getBytes(at: offset, length: initialExchangeBytes.writerIndex - offset))
         
         offset = initialExchangeBytes.writerIndex
         switch self.ourRole {
         case .client:
-            initialExchangeBytes.writeMPBignum(self.publicKey)
+            initialExchangeBytes.writeMPBignum(ourKey._publicKey.modulus)
             offset = initialExchangeBytes.writerIndex
             initialExchangeBytes.writeMPBignum(serverPublicKey)
         case .server:
             initialExchangeBytes.writeMPBignum(serverPublicKey)
-            initialExchangeBytes.writeMPBignum(self.publicKey)
+            initialExchangeBytes.writeMPBignum(ourKey._publicKey.modulus)
         }
-        
-        print(initialExchangeBytes.getBytes(at: offset, length: initialExchangeBytes.writerIndex - offset))
         
         // Ok, now finalize the exchange hash. If we don't have a previous session identifier at this stage, we do now!
         initialExchangeBytes.writeMPBignum(secret)
@@ -205,13 +179,13 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         }
 
         // Now we can generate the keys.
-        let keys = self.generateKeys(sharedSecret: self.sharedSecret!, exchangeHash: exchangeHash, sessionID: sessionID, expectedKeySizes: expectedKeySizes)
+        let keys = self.generateKeys(secret: secret, exchangeHash: exchangeHash, sessionID: sessionID, expectedKeySizes: expectedKeySizes)
 
         // All done!
         return _KeyExchangeResult(sessionID: sessionID, exchangeHash: exchangeHash, keys: keys)
     }
 
-    private func generateKeys(sharedSecret: Data, exchangeHash: Insecure.SHA1.Digest, sessionID: ByteBuffer, expectedKeySizes: ExpectedKeySizes) -> NIOSSHSessionKeys {
+    private func generateKeys(secret: UnsafeMutablePointer<BIGNUM>, exchangeHash: Insecure.SHA1.Digest, sessionID: ByteBuffer, expectedKeySizes: ExpectedKeySizes) -> NIOSSHSessionKeys {
         // Cool, now it's time to generate the keys. In my ideal world I'd have a mechanism to handle this digest securely, but this is
         // not available in CryptoKit so we're going to spill these keys all over the heap and the stack. This isn't ideal, but I don't
         // think the risk is too bad.
@@ -226,9 +200,6 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         // - Encryption key server to client: HASH(K || H || "D" || session_id)
         // - Integrity key client to server: HASH(K || H || "E" || session_id)
         // - Integrity key server to client: HASH(K || H || "F" || session_id)
-        //
-        // As all of these hashes begin the same way we save a trivial amount of compute by
-        // using the value semantics of the hasher.
         
         func calculateSha1SymmetricKey(letter: UInt8, expectedKeySize size: Int) -> SymmetricKey {
             SymmetricKey(data: calculateSha1Key(letter: letter, expectedKeySize: size))
@@ -240,7 +211,7 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
             
             while result.count < size {
                 hashInput.moveWriterIndex(to: 0)
-                hashInput.writeSSHString(sharedSecret)
+                hashInput.writeMPBignum(secret)
                 hashInput.writeBytes(exchangeHash)
                 
                 if !result.isEmpty {
@@ -260,12 +231,12 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         switch self.ourRole {
         case .client:
             return NIOSSHSessionKeys(
-                initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),
-                initialOutboundIV: calculateSha1Key(letter: UInt8(ascii: "B"), expectedKeySize: expectedKeySizes.ivSize),
-                inboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "C"), expectedKeySize: expectedKeySizes.encryptionKeySize),
-                outboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "D"), expectedKeySize: expectedKeySizes.encryptionKeySize),
-                inboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "E"), expectedKeySize: expectedKeySizes.macKeySize),
-                outboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "F"), expectedKeySize: expectedKeySizes.macKeySize))
+                initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "B"), expectedKeySize: expectedKeySizes.ivSize),
+                initialOutboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),
+                inboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "D"), expectedKeySize: expectedKeySizes.encryptionKeySize),
+                outboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "C"), expectedKeySize: expectedKeySizes.encryptionKeySize),
+                inboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "F"), expectedKeySize: expectedKeySizes.macKeySize),
+                outboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "E"), expectedKeySize: expectedKeySizes.macKeySize))
         case .server:
             return NIOSSHSessionKeys(
                 initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),

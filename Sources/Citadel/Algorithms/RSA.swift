@@ -58,6 +58,12 @@ extension Insecure.RSA {
             let context = CCryptoBoringSSL_RSA_new()
             defer { CCryptoBoringSSL_RSA_free(context) }
 
+            // Copy, so that our local `self.modulus` isn't freed by RSA_free
+            let modulus = CCryptoBoringSSL_BN_new()!
+            let publicExponent = CCryptoBoringSSL_BN_new()!
+            
+            CCryptoBoringSSL_BN_copy(modulus, self.modulus)
+            CCryptoBoringSSL_BN_copy(publicExponent, self.publicExponent)
             guard CCryptoBoringSSL_RSA_set0_key(
                 context,
                 modulus,
@@ -157,13 +163,8 @@ extension Insecure.RSA {
     public final class PrivateKey: NIOSSHPrivateKeyProtocol {
         public static let keyPrefix = "ssh-rsa"
         
-        internal enum Storage {
-            case privateExponent(UnsafeMutablePointer<BIGNUM>)
-            // TODO: Quintuple
-        }
-        
         // Private Exponent
-        internal let storage: Storage
+        internal let privateExponent: UnsafeMutablePointer<BIGNUM>
         
         // Public Exponent e
         internal let _publicKey: PublicKey
@@ -173,15 +174,12 @@ extension Insecure.RSA {
         }
         
         public init(privateExponent: UnsafeMutablePointer<BIGNUM>, publicExponent: UnsafeMutablePointer<BIGNUM>, modulus: UnsafeMutablePointer<BIGNUM>) {
-            self.storage = .privateExponent(privateExponent)
+            self.privateExponent = privateExponent
             self._publicKey = PublicKey(publicExponent: publicExponent, modulus: modulus)
         }
         
         deinit {
-            switch storage {
-            case .privateExponent(let p):
-                CCryptoBoringSSL_BN_free(p)
-            }
+            CCryptoBoringSSL_BN_free(privateExponent)
         }
         
         public init(bits: Int = 2047, publicExponent e: BigUInt = 65537) {
@@ -200,7 +198,7 @@ extension Insecure.RSA {
             CCryptoBoringSSL_BN_free(generator)
             CCryptoBoringSSL_BN_free(group)
             
-            self.storage = .privateExponent(privateKey)
+            self.privateExponent = privateKey
             self._publicKey = .init(
                 publicExponent: e,
                 modulus: publicKey
@@ -297,18 +295,15 @@ extension Insecure.RSA {
             let ctx = CCryptoBoringSSL_BN_CTX_new()
             defer { CCryptoBoringSSL_BN_CTX_free(ctx) }
             
-            switch storage {
-            case let .privateExponent(privateExponent):
-                let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)!
-                defer { CCryptoBoringSSL_BN_free(group) }
-                CCryptoBoringSSL_BN_mod_exp(
-                    secret,
-                    publicKey.modulus,
-                    privateExponent,
-                    group,
-                    ctx
-                )
-            }
+            let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)!
+            defer { CCryptoBoringSSL_BN_free(group) }
+            CCryptoBoringSSL_BN_mod_exp(
+                secret,
+                publicKey.modulus,
+                privateExponent,
+                group,
+                ctx
+            )
             
             var array = [UInt8]()
             array.reserveCapacity(Int(CCryptoBoringSSL_BN_num_bytes(secret)))
