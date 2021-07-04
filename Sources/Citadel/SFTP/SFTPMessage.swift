@@ -125,7 +125,7 @@ public struct SFTPFileAttributes {
     public static let none = SFTPFileAttributes()
 }
 
-enum SFTPMessageType: UInt8 {
+public enum SFTPMessageType: UInt8 {
     case initialize = 1
     case version = 2
     case openFile = 3
@@ -218,78 +218,78 @@ enum SFTPResponse {
     }
 }
 
-enum SFTPMessage {
-    struct Initialize {
-        static let id = SFTPMessageType.initialize
+public enum SFTPMessage {
+    public struct Initialize {
+        public static let id = SFTPMessageType.initialize
         
-        let version: UInt32
+        public let version: UInt32
     }
     
-    struct Version {
+    public struct Version {
         static let id = SFTPMessageType.version
         
-        let version: UInt32
-        let extensionData: [(String, String)]
+        public let version: UInt32
+        public let extensionData: [(String, String)]
     }
     
-    struct OpenFile {
-        static let id = SFTPMessageType.openFile
+    public struct OpenFile {
+        public static let id = SFTPMessageType.openFile
         
-        var requestId: UInt32
+        public var requestId: UInt32
         
         // Called `filename` in spec
-        let filePath: String
+        public let filePath: String
         
-        let pFlags: SFTPOpenFileFlags
-        let attributes: SFTPFileAttributes
+        public let pFlags: SFTPOpenFileFlags
+        public let attributes: SFTPFileAttributes
     }
     
-    struct CloseFile {
-        static let id = SFTPMessageType.closeFile
+    public struct CloseFile {
+        public static let id = SFTPMessageType.closeFile
         
-        var requestId: UInt32
-        var handle: ByteBuffer
+        public var requestId: UInt32
+        public var handle: ByteBuffer
     }
     
-    struct ReadFile {
-        static let id = SFTPMessageType.read
+    public struct ReadFile {
+        public static let id = SFTPMessageType.read
         
-        var requestId: UInt32
-        var handle: ByteBuffer
-        var offset: UInt64
-        var length: UInt32
+        public var requestId: UInt32
+        public var handle: ByteBuffer
+        public var offset: UInt64
+        public var length: UInt32
     }
     
-    struct WriteFile {
-        static let id = SFTPMessageType.write
+    public struct WriteFile {
+        public static let id = SFTPMessageType.write
         
-        var requestId: UInt32
-        var handle: ByteBuffer
-        var offset: UInt64
-        var data: ByteBuffer
+        public var requestId: UInt32
+        public var handle: ByteBuffer
+        public var offset: UInt64
+        public var data: ByteBuffer
     }
     
-    struct Status: Error {
-        static let id = SFTPMessageType.status
+    public struct Status: Error {
+        public static let id = SFTPMessageType.status
         
-        let requestId: UInt32
-        let errorCode: UInt32
-        let message: String
-        let languageTag: String
+        public let requestId: UInt32
+        public let errorCode: UInt32
+        public let message: String
+        public let languageTag: String
     }
     
-    struct Handle {
-        static let id = SFTPMessageType.handle
+    public struct Handle {
+        public static let id = SFTPMessageType.handle
         
-        let requestId: UInt32
-        var handle: ByteBuffer
+        public let requestId: UInt32
+        public var handle: ByteBuffer
     }
     
-    struct FileData {
-        static let id = SFTPMessageType.data
+    public struct FileData {
+        public static let id = SFTPMessageType.data
         
-        let requestId: UInt32
-        var data: ByteBuffer
+        public let requestId: UInt32
+        public var data: ByteBuffer
     }
     
     case initialize(Initialize)
