@@ -70,7 +70,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             CCryptoBoringSSL_EVP_aes_128_ctr(),
             inboundEncryptionKey,
             initialKeys.initialInboundIV,
-            1
+            0
         ) == 1 else {
             #warning("Throw error")
             fatalError()
@@ -115,7 +115,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             CCryptoBoringSSL_EVP_aes_256_ctr(),
             inboundEncryptionKey,
             newKeys.initialInboundIV,
-            1
+            0
         ) == 1 else {
             #warning("Throw error")
             fatalError()
@@ -129,69 +129,107 @@ public final class AES256CTR: NIOSSHTransportProtection {
             throw CitadelError.invalidKeySize
         }
         
-        try source.withUnsafeMutableReadableBytes { source in
+        source.readWithUnsafeMutableReadableBytes { source in
             let source = source.bindMemory(to: UInt8.self)
-            fatalError()
-//            let decrypted = try inboundAES.decrypt(Array(source[0..<16]))
-//            source.baseAddress!.assign(from: decrypted, count: 16)
+            let out = UnsafeMutablePointer<UInt8>.allocate(capacity: Self.cipherBlockSize)
+            defer { out.deallocate() }
+            
+            guard CCryptoBoringSSL_EVP_Cipher(
+                decryptionContext,
+                out,
+                source.baseAddress!,
+                Self.cipherBlockSize
+            ) == 1 else {
+                #warning("Throw error")
+                fatalError()
+            }
+            
+            memcpy(source.baseAddress, out, Self.cipherBlockSize)
+            return 0
         }
     }
     
     public func decryptAndVerifyRemainingPacket(_ source: inout ByteBuffer, sequenceNumber: UInt32) throws -> ByteBuffer {
-        var plaintext: [UInt8]
         var macHash: [UInt8]
+        var plaintext: [UInt8]
 
         // Establish a nested scope here to avoid the byte buffer views causing an accidental CoW.
         do {
             // The first 4 bytes are the length. The last 16 are the tag. Everything else is ciphertext. We expect
             // that the ciphertext is a clean multiple of the block size, and to be non-zero.
             guard
-                let lengthView = source.readSlice(length: 4)?.readableBytesView,
+                var plaintextView = source.readBytes(length: 16),
                 let ciphertextView = source.readBytes(length: source.readableBytes - macBytes),
                 let mac = source.readBytes(length: macBytes),
-                ciphertextView.count > 0, ciphertextView.count % Self.cipherBlockSize == 0
+                ciphertextView.count % Self.cipherBlockSize == 0
             else {
                 // The only way this fails is if the payload doesn't match this encryption scheme.
                 throw CitadelError.invalidEncryptedPacketLength
             }
 
-            // Ok, let's try to decrypt this data.
-//            plaintext = try inboundAES.decrypt(ciphertextView)
-            fatalError()
+            if !ciphertextView.isEmpty {
+                // Ok, let's try to decrypt this data.
+                plaintextView += ciphertextView.withUnsafeBufferPointer { ciphertext -> [UInt8] in
+                    let ciphertextPointer = ciphertext.baseAddress!
+                    
+                    return [UInt8](
+                        unsafeUninitializedCapacity: ciphertextView.count,
+                        initializingWith: { plaintext, count in
+                        let plaintextPointer = plaintext.baseAddress!
+                        
+                        while count < ciphertext.count {
+                            guard CCryptoBoringSSL_EVP_Cipher(
+                                decryptionContext,
+                                plaintextPointer + count,
+                                ciphertextPointer + count,
+                                Self.cipherBlockSize
+                            ) == 1 else {
+                                #warning("Throw error")
+                                fatalError()
+                            }
+                            
+                            count += Self.cipherBlockSize
+                        }
+                    })
+                }
+            }
+            
+            plaintext = plaintextView
             macHash = mac
             
             // All good! A quick soundness check to verify that the length of the plaintext is ok.
-            guard plaintext.count % Self.cipherBlockSize == 0, plaintext.count == ciphertextView.count else {
+            guard plaintext.count % Self.cipherBlockSize == 0 else {
                 throw CitadelError.invalidDecryptedPlaintextLength
             }
         }
         
-        // Ok, we want to write the plaintext back into the buffer. This contains the padding length byte and the padding
-        // bytes, so we want to strip those. We write back into the buffer and then slice the return value out because
-        // it's highly likely that the source buffer is held uniquely, which means we can avoid an allocation.
-        try plaintext.removePaddingBytes()
-        source.prependBytes(plaintext)
-        
-        // This slice read must succeed, as we just wrote in that many bytes.
-        let result = source.readSlice(length: plaintext.count)!
-        
-        var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.inboundMACKey)
-        fatalError()
-//        decryptionSequenceNumber._cVarArgEncoding.withUnsafeBytes { buffer in
-//            hmac.update(data: buffer)
-//        }
-        hmac.update(data: result.readableBytesView)
-        
-        let isValid = hmac.finalize().withUnsafeBytes { buffer -> Bool in
-            let buffer = Array(buffer.bindMemory(to: UInt8.self))
-            return buffer == macHash
+        func test(sequenceNumber: UInt32) -> Bool {
+            var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.inboundMACKey)
+            withUnsafeBytes(of: sequenceNumber.bigEndian) { buffer in
+                hmac.update(data: buffer)
+            }
+            hmac.update(data: plaintext)
+            
+            return hmac.finalize().withUnsafeBytes { buffer -> Bool in
+                let buffer = Array(buffer.bindMemory(to: UInt8.self))
+                return buffer == macHash
+            }
         }
         
-        if !isValid {
+        if !test(sequenceNumber: sequenceNumber) {
             throw CitadelError.invalidMac
         }
         
-        return result
+        plaintext.removeFirst(4)
+        let paddingLength = Int(plaintext.removeFirst())
+        
+        guard paddingLength < plaintext.count else {
+            throw CitadelError.invalidDecryptedPlaintextLength
+        }
+        
+        plaintext.removeLast(paddingLength)
+        
+        return ByteBuffer(bytes: plaintext)
     }
     
     public func encryptPacket(
@@ -252,7 +290,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
         assert(plaintext.count % Self.cipherBlockSize == 0)
         
         var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.outboundMACKey)
-        sequenceNumber._cVarArgEncoding.withUnsafeBytes { buffer in
+        withUnsafeBytes(of: sequenceNumber.bigEndian) { buffer in
             hmac.update(data: buffer)
         }
         hmac.update(data: plaintext)
@@ -269,12 +307,13 @@ public final class AES256CTR: NIOSSHTransportProtection {
                         encryptionContext,
                         ciphertextPointer + count,
                         plaintextPointer + count,
-                        16
+                        Self.cipherBlockSize
                     ) == 1 else {
+                        #warning("Throw error")
                         fatalError()
                     }
                     
-                    count += 16
+                    count += Self.cipherBlockSize
                 }
             }
         }
@@ -283,31 +322,12 @@ public final class AES256CTR: NIOSSHTransportProtection {
         // We now want to overwrite the portion of the bytebuffer that contains the plaintext with the ciphertext, and then append the
         // tag.
         outboundBuffer.setBytes(ciphertext, at: packetLengthIndex)
-        print(Array(macHash), macHash.byteCount)
         outboundBuffer.writeContiguousBytes(macHash)
     }
     
     deinit {
         CCryptoBoringSSL_EVP_CIPHER_CTX_free(encryptionContext)
         CCryptoBoringSSL_EVP_CIPHER_CTX_free(decryptionContext)
-    }
-}
-
-extension Array where Element == UInt8 {
-    /// Removes the padding bytes from a Data object.
-    fileprivate mutating func removePaddingBytes() throws {
-        guard let paddingLength = self.first, paddingLength >= 4 else {
-            throw CitadelError.insufficientPadding
-        }
-
-        // We're going to slice out the content bytes. To do that, can simply find the end index of the content, and confirm it's
-        // not walked off the front of the buffer. If it has, there's too much padding and an error has occurred.
-        let contentStartIndex = self.index(after: self.startIndex)
-        guard let contentEndIndex = self.index(self.endIndex, offsetBy: -Int(paddingLength), limitedBy: contentStartIndex) else {
-            throw CitadelError.excessPadding
-        }
-
-        self = Array(self[contentStartIndex ..< contentEndIndex])
     }
 }
 
