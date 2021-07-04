@@ -183,7 +183,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
         // Ok, nice! Now we need to encrypt the data. We pass the length field as additional authenticated data, and the encrypted
         // payload portion as the data to encrypt. We know these views will be valid, so we forcibly unwrap them: if they're invalid,
         // our math was wrong and we cannot recover.
-        let plaintext = outboundBuffer.getBytes(at: packetLengthIndex, length: packetLengthLength)!
+        let plaintext = outboundBuffer.getBytes(at: packetLengthIndex, length: encryptedBufferSize)!
         
         var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.outboundMACKey)
         decryptionSequenceNumber._cVarArgEncoding.withUnsafeBytes { buffer in

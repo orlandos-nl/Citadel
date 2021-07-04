@@ -13,10 +13,10 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
         
-        struct AuthenticationFailed: Error {}
-        eventLoop.scheduleTask(in: .seconds(10)) {
-            promise.fail(AuthenticationFailed())
-        }
+//        struct AuthenticationFailed: Error {}
+//        eventLoop.scheduleTask(in: .seconds(10)) {
+//            promise.fail(AuthenticationFailed())
+//        }
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {

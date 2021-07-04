@@ -128,24 +128,26 @@ public final class SFTPClient {
 
 extension SSHClient {
     public func openSFTP() -> EventLoopFuture<SFTPClient> {
-        let createChannel = eventLoop.makePromise(of: Channel.self)
-        session.sshHandler.createChannel(createChannel) { channel, _ in
-            return channel.eventLoop.makeSucceededFuture(())
-        }
-        
-        return createChannel.futureResult.flatMap { channel in
-            let openSubsystem = self.eventLoop.makePromise(of: Void.self)
+        eventLoop.flatSubmit {
+            let createChannel = self.eventLoop.makePromise(of: Channel.self)
+            self.session.sshHandler.createChannel(createChannel) { channel, _ in
+                return channel.eventLoop.makeSucceededFuture(())
+            }
             
-            channel.triggerUserOutboundEvent(
-                SSHChannelRequestEvent.SubsystemRequest(
-                    subsystem: "sftp",
-                    wantReply: true
-                ),
-                promise: openSubsystem
-            )
-            
-            return openSubsystem.futureResult.flatMap {
-                SFTPClient.initialize(channel: channel, sshClient: self)
+            return createChannel.futureResult.flatMap { channel in
+                let openSubsystem = self.eventLoop.makePromise(of: Void.self)
+                
+                channel.triggerUserOutboundEvent(
+                    SSHChannelRequestEvent.SubsystemRequest(
+                        subsystem: "sftp",
+                        wantReply: true
+                    ),
+                    promise: openSubsystem
+                )
+                
+                return openSubsystem.futureResult.flatMap {
+                    SFTPClient.initialize(channel: channel, sshClient: self)
+                }
             }
         }
     }

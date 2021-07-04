@@ -7,7 +7,7 @@ import NIOSSH
 struct InvalidKey: Error {}
 
 extension Insecure.RSA.PrivateKey {
-    public init(sshRsa data: Data) throws {
+    public convenience init(sshRsa data: Data) throws {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshRsa: string)
         } else {
@@ -15,7 +15,7 @@ extension Insecure.RSA.PrivateKey {
         }
     }
     
-    public init(sshRsa key: String) throws {
+    public convenience init(sshRsa key: String) throws {
         var key = key.replacingOccurrences(of: "\n", with: "")
         
         guard
@@ -111,7 +111,8 @@ extension Insecure.RSA.PrivateKey {
         
 //        let e2 = BigUInt(e2Data)
 //        let n2 = BigUInt(n2Data)
-//
-        self.init(privateExponent: d, publicExponent: e, modulus: n)
+
+//        self.init(privateExponent: d, publicExponent: n, modulus: e)
+        fatalError()
     }
 }

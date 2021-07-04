@@ -11,49 +11,75 @@ extension Insecure {
 }
 
 extension Insecure.RSA {
-    public struct PublicKey: Equatable, Hashable, NIOSSHPublicKeyProtocol {
+    public final class PublicKey: NIOSSHPublicKeyProtocol {
         public static let publicKeyPrefix = "ssh-rsa"
         public static let keyExchangeAlgorithms = ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1"]
         
         // PublicExponent e
-        fileprivate let publicExponent: BigUInt
+        internal let publicExponent: UnsafeMutablePointer<BIGNUM>
         
         // Modulus n
-        private let modulus: BigUInt
+        internal let modulus: UnsafeMutablePointer<BIGNUM>
+        
+        deinit {
+            CCryptoBoringSSL_BN_free(modulus)
+            CCryptoBoringSSL_BN_free(publicExponent)
+        }
         
         public var rawRepresentation: Data {
-            publicExponent.serialize() + modulus.serialize()
+            var buffer = ByteBuffer()
+            buffer.writeMPBignum(publicExponent)
+            buffer.writeMPBignum(modulus)
+            return buffer.readData(length: buffer.readableBytes)!
         }
         
         enum PubkeyParseError: Error {
             case invalidInitialSequence, invalidAlgorithmIdentifier, invalidSubjectPubkey, forbiddenTrailingData, invalidRSAPubkey
         }
         
-        public init(publicExponent: BigUInt, modulus: BigUInt) {
+        public init(publicExponent: UnsafeMutablePointer<BIGNUM>, modulus: UnsafeMutablePointer<BIGNUM>) {
             self.publicExponent = publicExponent
             self.modulus = modulus
         }
         
         public func encrypt<D: DataProtocol>(for message: D) throws -> EncryptedMessage {
-            let message = BigUInt(Data(message))
-            
-            guard message > .zero && message <= modulus - 1 else {
-                throw RSAError.messageRepresentativeOutOfRange
-            }
-            
-            let result = message.power(publicExponent, modulus: modulus)
-            return EncryptedMessage(rawRepresentation: result.serialize())
+//            let message = BigUInt(Data(message))
+//
+//            guard message > .zero && message <= modulus - 1 else {
+//                throw RSAError.messageRepresentativeOutOfRange
+//            }
+//
+//            let result = message.power(publicExponent, modulus: modulus)
+//            return EncryptedMessage(rawRepresentation: result.serialize())
+            fatalError()
         }
         
         public func isValidSignature<D: DataProtocol>(_ signature: Signature, for digest: D) -> Bool {
-            let signature = BigUInt(signature.rawRepresentation)
-            
-            guard signature > .zero && signature <= modulus - 1 else {
+            let context = CCryptoBoringSSL_RSA_new()
+            defer { CCryptoBoringSSL_RSA_free(context) }
+
+            guard CCryptoBoringSSL_RSA_set0_key(
+                context,
+                modulus,
+                publicExponent,
+                nil
+            ) == 1 else {
                 return false
             }
             
-            let m = signature.power(publicExponent, modulus: modulus)
-            return m.serialize() == Data(digest)
+            var clientSignature = [UInt8](repeating: 0, count: 20)
+            let digest = Array(digest)
+            CCryptoBoringSSL_SHA1(digest, digest.count, &clientSignature)
+            
+            let signature = Array(signature.rawRepresentation)
+            return CCryptoBoringSSL_RSA_verify(
+                NID_sha1,
+                clientSignature,
+                20,
+                signature,
+                signature.count,
+                context
+            ) == 1
         }
         
         public func isValidSignature<D>(_ signature: NIOSSHSignatureProtocol, for data: D) -> Bool where D : DataProtocol {
@@ -67,22 +93,24 @@ extension Insecure.RSA {
         public func write(to buffer: inout ByteBuffer) -> Int {
             // For ssh-rsa, the format is public exponent `e` followed by modulus `n`
             var writtenBytes = 0
-            writtenBytes += buffer.writePositiveMPInt(publicExponent.serialize())
-            writtenBytes += buffer.writePositiveMPInt(modulus.serialize())
+            writtenBytes += buffer.writeMPBignum(publicExponent)
+            writtenBytes += buffer.writeMPBignum(modulus)
             return writtenBytes
         }
         
         public static func read(from buffer: inout ByteBuffer) throws -> Insecure.RSA.PublicKey {
             guard
-                let publicExponent = buffer.readPositiveMPInt(),
-                let modulus = buffer.readPositiveMPInt()
+                var publicExponent = buffer.readSSHBuffer(),
+                var modulus = buffer.readSSHBuffer()
             else {
                 throw RSAError(message: "Invalid signature format")
             }
             
+            let publicExponentBytes = publicExponent.readBytes(length: publicExponent.readableBytes)!
+            let modulusBytes = modulus.readBytes(length: modulus.readableBytes)!
             return .init(
-                publicExponent: publicExponent,
-                modulus: modulus
+                publicExponent: CCryptoBoringSSL_BN_bin2bn(publicExponentBytes, publicExponentBytes.count, nil),
+                modulus: CCryptoBoringSSL_BN_bin2bn(modulusBytes, modulusBytes.count, nil)
             )
         }
     }
@@ -126,52 +154,68 @@ extension Insecure.RSA {
         }
     }
     
-    public struct PrivateKey: NIOSSHPrivateKeyProtocol {
+    public final class PrivateKey: NIOSSHPrivateKeyProtocol {
         public static let keyPrefix = "ssh-rsa"
         
-        public enum Storage {
-            case privateExponent(d: BigUInt, n: BigUInt)
+        internal enum Storage {
+            case privateExponent(UnsafeMutablePointer<BIGNUM>)
             // TODO: Quintuple
         }
         
         // Private Exponent
-        private let storage: Storage
+        internal let storage: Storage
         
         // Public Exponent e
-        private let _publicKey: PublicKey
+        internal let _publicKey: PublicKey
         
         public var publicKey: NIOSSHPublicKeyProtocol {
             _publicKey
         }
         
-        public init(privateExponent: BigUInt, publicExponent: BigUInt, modulus: BigUInt) {
-            self.storage = .privateExponent(d: privateExponent, n: modulus)
+        public init(privateExponent: UnsafeMutablePointer<BIGNUM>, publicExponent: UnsafeMutablePointer<BIGNUM>, modulus: UnsafeMutablePointer<BIGNUM>) {
+            self.storage = .privateExponent(privateExponent)
             self._publicKey = PublicKey(publicExponent: publicExponent, modulus: modulus)
         }
         
+        deinit {
+            switch storage {
+            case .privateExponent(let p):
+                CCryptoBoringSSL_BN_free(p)
+            }
+        }
+        
         public init(bits: Int = 2047, publicExponent e: BigUInt = 65537) {
-            let p = BigUInt.randomPrime(bits: bits)
-            let q = BigUInt.randomPrime(bits: bits)
+            let privateKey = CCryptoBoringSSL_BN_new()!
+            let publicKey = CCryptoBoringSSL_BN_new()!
+            let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)!
+            let generator = CCryptoBoringSSL_BN_bin2bn(generator2, generator2.count, nil)!
+            let bignumContext = CCryptoBoringSSL_BN_CTX_new()
             
-            let n = p * q // modulus
-            let phi = (p - 1) * (q - 1)
-            let d = e.inverse(phi)!
-            self.storage = .privateExponent(d: d, n: n)
-               
-            self._publicKey = PublicKey(
+            CCryptoBoringSSL_BN_rand(privateKey, 256 * 8 - 1, 0, /*-1*/BN_RAND_BOTTOM_ANY)
+            CCryptoBoringSSL_BN_mod_exp(publicKey, generator, privateKey, group, bignumContext)
+            let eBytes = Array(e.serialize())
+            let e = CCryptoBoringSSL_BN_bin2bn(eBytes, eBytes.count, nil)!
+            
+            CCryptoBoringSSL_BN_CTX_free(bignumContext)
+            CCryptoBoringSSL_BN_free(generator)
+            CCryptoBoringSSL_BN_free(group)
+            
+            self.storage = .privateExponent(privateKey)
+            self._publicKey = .init(
                 publicExponent: e,
-                modulus: n
+                modulus: publicKey
             )
         }
         
         public func signature<D: DataProtocol>(for message: D) throws -> Signature {
-            switch storage {
-            case .privateExponent(_, let n):
-                let message = try Self.encodePKCS1SHA1(message, length: (n.bitWidth + 7) / 8)
-                
-                let result = self.signature(for: BigUInt(Data(message)))
-                return Signature(rawRepresentation: result.serialize())
-            }
+//            switch storage {
+//            case .privateExponent(let privateKey):
+//                let message = try Self.encodePKCS1SHA1(message, length: (n.bitWidth + 7) / 8)
+//
+//                let result = self.signature(for: BigUInt(Data(message)))
+//                return Signature(rawRepresentation: result.serialize())
+//            }
+            fatalError()
         }
         
         public func signature<D>(for data: D) throws -> NIOSSHSignatureProtocol where D : DataProtocol {
@@ -225,30 +269,51 @@ extension Insecure.RSA {
         }
         
         private func signature(for m: BigUInt) -> BigUInt {
-            switch storage {
-            case let .privateExponent(d, n):
-                return m.power(d, modulus: n)
-            }
+//            switch storage {
+//            case let .privateExponent(d, n):
+//                return m.power(d, modulus: n)
+//            }
+            fatalError()
         }
         
         public func decrypt(_ message: EncryptedMessage) throws -> Data {
-            let signature = BigUInt(message.rawRepresentation)
-            
-            switch storage {
-            case let .privateExponent(privateExponent, modulus):
-                guard signature >= .zero && signature <= privateExponent else {
-                    throw RSAError.ciphertextRepresentativeOutOfRange
-                }
-                
-                return signature.power(privateExponent, modulus: modulus).serialize()
-            }
+//            let signature = BigUInt(message.rawRepresentation)
+//
+//            switch storage {
+//            case let .privateExponent(privateExponent, modulus):
+//                guard signature >= .zero && signature <= privateExponent else {
+//                    throw RSAError.ciphertextRepresentativeOutOfRange
+//                }
+//
+//                return signature.power(privateExponent, modulus: modulus).serialize()
+//            }
+            fatalError()
         }
         
-        internal func generatedSharedSecret(with publicKey: PublicKey) -> Data {
+        internal func generatedSharedSecret(with publicKey: PublicKey, modulus: BigUInt) -> Data {
+            let secret = CCryptoBoringSSL_BN_new()
+            defer { CCryptoBoringSSL_BN_free(secret) }
+            
+            let ctx = CCryptoBoringSSL_BN_CTX_new()
+            defer { CCryptoBoringSSL_BN_CTX_free(ctx) }
+            
             switch storage {
-            case let .privateExponent(d: privateExponent, n: modulus):
-                return privateExponent.power(publicKey.publicExponent, modulus: modulus).serialize()
+            case let .privateExponent(privateExponent):
+                let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)!
+                defer { CCryptoBoringSSL_BN_free(group) }
+                CCryptoBoringSSL_BN_mod_exp(
+                    secret,
+                    publicKey.modulus,
+                    privateExponent,
+                    group,
+                    ctx
+                )
             }
+            
+            var array = [UInt8]()
+            array.reserveCapacity(Int(CCryptoBoringSSL_BN_num_bytes(secret)))
+            CCryptoBoringSSL_BN_bn2bin(secret, &array)
+            return Data(array)
         }
     }
 }

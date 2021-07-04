@@ -1,20 +1,62 @@
+import CCryptoBoringSSL
 import Foundation
 import BigInt
 import NIO
 import NIOSSH
 import Crypto
 
-public struct DiffieHellmanGroup1Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
+let generator2: [UInt8] = [ 0x02 ]
+let dh14PublicExponent: [UInt8] = [ 0x01, 0x00, 0x01 ]
+let dh14p: [UInt8] = [
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
+    0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
+    0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+    0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
+    0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
+    0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
+    0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
+    0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
+    0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
+    0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
+    0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
+    0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+    0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
+    0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D,
+    0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
+    0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A,
+    0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
+    0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96,
+    0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
+    0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D,
+    0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
+    0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C,
+    0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
+    0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03,
+    0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
+    0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9,
+    0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
+    0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5,
+    0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
+    0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+]
+
+public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
     public static let keyExchangeInitMessageId: UInt8 = 30
     public static let keyExchangeReplyMessageId: UInt8 = 31
     
-    public static let keyExchangeAlgorithmNames: [Substring] = ["diffie-hellman-group1-sha1"]
+    public static let keyExchangeAlgorithmNames: [Substring] = ["diffie-hellman-group14-sha1"]
     
     private var previousSessionIdentifier: ByteBuffer?
     private var ourRole: SSHConnectionRole
     private var theirKey: Insecure.RSA.PublicKey?
     private var sharedSecret: Data?
     public let ourKey: Insecure.RSA.PrivateKey
+    public static var ourKey: Insecure.RSA.PrivateKey?
+    public let privateKey: UnsafeMutablePointer<BIGNUM>
+    public let publicKey: UnsafeMutablePointer<BIGNUM>
+    public let group: UnsafeMutablePointer<BIGNUM>
     
     private struct _KeyExchangeResult {
         var sessionID: ByteBuffer
@@ -24,27 +66,52 @@ public struct DiffieHellmanGroup1Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
     
     public init(ourRole: SSHConnectionRole, previousSessionIdentifier: ByteBuffer?) {
         self.ourRole = ourRole
-        self.ourKey = Insecure.RSA.PrivateKey()
         self.previousSessionIdentifier = previousSessionIdentifier
+        self.ourKey = Self.ourKey ?? Insecure.RSA.PrivateKey()
+        
+        self.privateKey = CCryptoBoringSSL_BN_new()
+        self.publicKey = CCryptoBoringSSL_BN_new()
+        self.group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)
+        let generator = CCryptoBoringSSL_BN_bin2bn(generator2, generator2.count, nil)
+        let bignumContext = CCryptoBoringSSL_BN_CTX_new()
+        
+        guard
+            CCryptoBoringSSL_BN_rand(privateKey, 256 * 8 - 1, 0, /*-1*/BN_RAND_BOTTOM_ANY) == 1,
+            CCryptoBoringSSL_BN_mod_exp(publicKey, generator, privateKey, group, bignumContext) == 1
+        else {
+            fatalError()
+        }
+        
+        CCryptoBoringSSL_BN_CTX_free(bignumContext)
+        CCryptoBoringSSL_BN_free(generator)
+    }
+    
+    deinit {
+        CCryptoBoringSSL_BN_free(privateKey)
+        CCryptoBoringSSL_BN_free(group)
+        CCryptoBoringSSL_BN_free(publicKey)
     }
     
     public func initiateKeyExchangeClientSide(allocator: ByteBufferAllocator) -> ByteBuffer {
         var buffer = allocator.buffer(capacity: 256)
-        _ = self.ourKey.publicKey.write(to: &buffer)
+        
+        buffer.writeBignum(publicKey)
         return buffer
     }
     
-    public mutating func completeKeyExchangeServerSide(clientKeyExchangeMessage message: ByteBuffer, serverHostKey: NIOSSHPrivateKey, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
+    public func completeKeyExchangeServerSide(clientKeyExchangeMessage message: ByteBuffer, serverHostKey: NIOSSHPrivateKey, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
         fatalError()
     }
     
-    public mutating func receiveServerKeyExchangePayload(serverHostKey hostKey: NIOSSHPublicKey, serverPublicKey publicKey: ByteBuffer, serverSignature signature: NIOSSHSignature, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
+    public func receiveServerKeyExchangePayload(serverHostKey hostKey: NIOSSHPublicKey, serverPublicKey publicKey: ByteBuffer, serverSignature signature: NIOSSHSignature, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
         let kexResult = try self.finalizeKeyExchange(theirKeyBytes: publicKey,
                                                      initialExchangeBytes: &initialExchangeBytes,
                                                      serverHostKey: hostKey,
                                                      allocator: allocator,
                                                      expectedKeySizes: expectedKeySizes)
 
+        
+        
         // We can now verify signature over the exchange hash.
         guard hostKey.isValidSignature(signature, for: kexResult.exchangeHash) else {
 //            throw NIOSSHError.invalidExchangeHashSignature
@@ -59,44 +126,74 @@ public struct DiffieHellmanGroup1Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
         )
     }
     
-    private mutating func finalizeKeyExchange(theirKeyBytes: ByteBuffer,
+    private func finalizeKeyExchange(theirKeyBytes f: ByteBuffer,
                                               initialExchangeBytes: inout ByteBuffer,
                                               serverHostKey: NIOSSHPublicKey,
                                               allocator: ByteBufferAllocator,
                                               expectedKeySizes: ExpectedKeySizes) throws -> _KeyExchangeResult {
-        let publicExponent = BigUInt(theirKeyBytes.getData(at: 0, length: theirKeyBytes.readableBytes)!)
-        self.theirKey = Insecure.RSA.PublicKey(publicExponent: publicExponent, modulus: 2)
-        self.sharedSecret = self.ourKey.generatedSharedSecret(with: self.theirKey!)
-
-        // Ok, we have a nice shared secret. Now we want to generate the exchange hash. We were given the initial
-        // portion from the state machine: here we just need to append the Curve25519 parts. That is:
-        //
-        // - the public host key bytes, as an SSH string
-        // - the client public key octet string
-        // - the server public key octet string
-        // - the shared secret, as an mpint.
-        initialExchangeBytes.writeCompositeSSHString(serverHostKey.write)
+        let f = f.getBytes(at: 0, length: f.readableBytes)!
         
+        let serverPublicKey = CCryptoBoringSSL_BN_bin2bn(f, f.count, nil)!
+        defer { CCryptoBoringSSL_BN_free(serverPublicKey) }
+        let secret = CCryptoBoringSSL_BN_new()!
+        let serverHostKeyBN = CCryptoBoringSSL_BN_new()
+        defer { CCryptoBoringSSL_BN_free(serverHostKeyBN) }
+        
+        var buffer = ByteBuffer()
+        serverHostKey.write(to: &buffer)
+        buffer.readWithUnsafeReadableBytes { buffer in
+            let buffer = buffer.bindMemory(to: UInt8.self)
+            CCryptoBoringSSL_BN_bin2bn(buffer.baseAddress!, buffer.count, serverHostKeyBN)
+            return buffer.count
+        }
+        
+        let ctx = CCryptoBoringSSL_BN_CTX_new()
+        defer { CCryptoBoringSSL_BN_CTX_free(ctx) }
+        
+        guard CCryptoBoringSSL_BN_mod_exp(
+            secret,
+            serverPublicKey,
+            privateKey,
+            group,
+            ctx
+        ) == 1 else {
+            CCryptoBoringSSL_BN_free(secret)
+            fatalError()
+        }
+        
+        var sharedSecret = [UInt8]()
+        sharedSecret.reserveCapacity(Int(CCryptoBoringSSL_BN_num_bytes(secret)))
+        CCryptoBoringSSL_BN_bn2bin(secret, &sharedSecret)
+        
+        self.sharedSecret = Data(sharedSecret)
+        
+        func hexEncodedString(array: [UInt8]) -> String {
+            return array.map { String(format: "%02hhx", $0) }.joined()
+        }
+        
+        var offset = initialExchangeBytes.writerIndex
+        initialExchangeBytes.writeCompositeSSHString {
+            serverHostKey.write(to: &$0)
+        }
+        print(initialExchangeBytes.getBytes(at: offset, length: initialExchangeBytes.writerIndex - offset))
+        
+        offset = initialExchangeBytes.writerIndex
         switch self.ourRole {
         case .client:
-            initialExchangeBytes.writeCompositeSSHString { self.ourKey.publicKey.write(to: &$0) }
-            initialExchangeBytes.writeCompositeSSHString { self.theirKey!.write(to: &$0) }
+            initialExchangeBytes.writeMPBignum(self.publicKey)
+            offset = initialExchangeBytes.writerIndex
+            initialExchangeBytes.writeMPBignum(serverPublicKey)
         case .server:
-            initialExchangeBytes.writeCompositeSSHString { self.theirKey!.write(to: &$0) }
-            initialExchangeBytes.writeCompositeSSHString { self.ourKey.publicKey.write(to: &$0) }
+            initialExchangeBytes.writeMPBignum(serverPublicKey)
+            initialExchangeBytes.writeMPBignum(self.publicKey)
         }
-
-        // Handling the shared secret is more awkward. We want to avoid putting the shared secret into unsecured
-        // memory if we can, so rather than writing it into a bytebuffer, we'd like to hand it to CryptoKit directly
-        // for signing. That means we need to set up our signing context.
-        var hasher = Insecure.SHA1()
-        hasher.update(data: initialExchangeBytes.readableBytesView)
-
-        // Finally, we update with the shared secret
-        hasher.updateAsMPInt(sharedSecret: self.sharedSecret!)
-
+        
+        print(initialExchangeBytes.getBytes(at: offset, length: initialExchangeBytes.writerIndex - offset))
+        
         // Ok, now finalize the exchange hash. If we don't have a previous session identifier at this stage, we do now!
-        let exchangeHash = hasher.finalize()
+        initialExchangeBytes.writeMPBignum(secret)
+        
+        let exchangeHash = Insecure.SHA1.hash(data: initialExchangeBytes.readableBytesView)
 
         let sessionID: ByteBuffer
         if let previousSessionIdentifier = self.previousSessionIdentifier {
@@ -132,65 +229,52 @@ public struct DiffieHellmanGroup1Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
         //
         // As all of these hashes begin the same way we save a trivial amount of compute by
         // using the value semantics of the hasher.
-        var baseHasher = Insecure.SHA1()
-        baseHasher.updateAsMPInt(sharedSecret: sharedSecret)
-        exchangeHash.withUnsafeBytes { hashPtr in
-            baseHasher.update(bufferPointer: hashPtr)
+        
+        func calculateSha1SymmetricKey(letter: UInt8, expectedKeySize size: Int) -> SymmetricKey {
+            SymmetricKey(data: calculateSha1Key(letter: letter, expectedKeySize: size))
+        }
+        
+        func calculateSha1Key(letter: UInt8, expectedKeySize size: Int) -> [UInt8] {
+            var result = [UInt8]()
+            var hashInput = ByteBuffer()
+            
+            while result.count < size {
+                hashInput.moveWriterIndex(to: 0)
+                hashInput.writeSSHString(sharedSecret)
+                hashInput.writeBytes(exchangeHash)
+                
+                if !result.isEmpty {
+                    hashInput.writeBytes(result)
+                } else {
+                    hashInput.writeInteger(letter)
+                    hashInput.writeBytes(sessionID.readableBytesView)
+                }
+                
+                result += Insecure.SHA1.hash(data: hashInput.readableBytesView)
+            }
+            
+            result.removeLast(result.count - size)
+            return result
         }
 
         switch self.ourRole {
         case .client:
-            return NIOSSHSessionKeys(initialInboundIV: self.generateServerToClientIV(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.ivSize),
-                                     initialOutboundIV: self.generateClientToServerIV(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.ivSize),
-                                     inboundEncryptionKey: self.generateServerToClientEncryptionKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.encryptionKeySize),
-                                     outboundEncryptionKey: self.generateClientToServerEncryptionKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.encryptionKeySize),
-                                     inboundMACKey: self.generateServerToClientMACKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.macKeySize),
-                                     outboundMACKey: self.generateClientToServerMACKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.macKeySize))
+            return NIOSSHSessionKeys(
+                initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),
+                initialOutboundIV: calculateSha1Key(letter: UInt8(ascii: "B"), expectedKeySize: expectedKeySizes.ivSize),
+                inboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "C"), expectedKeySize: expectedKeySizes.encryptionKeySize),
+                outboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "D"), expectedKeySize: expectedKeySizes.encryptionKeySize),
+                inboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "E"), expectedKeySize: expectedKeySizes.macKeySize),
+                outboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "F"), expectedKeySize: expectedKeySizes.macKeySize))
         case .server:
-            return NIOSSHSessionKeys(initialInboundIV: self.generateClientToServerIV(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.ivSize),
-                                     initialOutboundIV: self.generateServerToClientIV(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.ivSize),
-                                     inboundEncryptionKey: self.generateClientToServerEncryptionKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.encryptionKeySize),
-                                     outboundEncryptionKey: self.generateServerToClientEncryptionKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.encryptionKeySize),
-                                     inboundMACKey: self.generateClientToServerMACKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.macKeySize),
-                                     outboundMACKey: self.generateServerToClientMACKey(baseHasher: baseHasher, sessionID: sessionID, expectedKeySize: expectedKeySizes.macKeySize))
+            return NIOSSHSessionKeys(
+                initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),
+                initialOutboundIV: calculateSha1Key(letter: UInt8(ascii: "B"), expectedKeySize: expectedKeySizes.ivSize),
+                inboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "C"), expectedKeySize: expectedKeySizes.encryptionKeySize),
+                outboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "D"), expectedKeySize: expectedKeySizes.encryptionKeySize),
+                inboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "E"), expectedKeySize: expectedKeySizes.macKeySize),
+                outboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "F"), expectedKeySize: expectedKeySizes.macKeySize))
         }
-    }
-
-    private func generateClientToServerIV(baseHasher: Insecure.SHA1, sessionID: ByteBuffer, expectedKeySize: Int) -> [UInt8] {
-        assert(expectedKeySize <= Insecure.SHA1.Digest.byteCount)
-        return Array(self.generateSpecificHash(baseHasher: baseHasher, discriminatorByte: UInt8(ascii: "A"), sessionID: sessionID).prefix(expectedKeySize))
-    }
-
-    private func generateServerToClientIV(baseHasher: Insecure.SHA1, sessionID: ByteBuffer, expectedKeySize: Int) -> [UInt8] {
-        assert(expectedKeySize <= Insecure.SHA1.Digest.byteCount)
-        return Array(self.generateSpecificHash(baseHasher: baseHasher, discriminatorByte: UInt8(ascii: "B"), sessionID: sessionID).prefix(expectedKeySize))
-    }
-
-    private func generateClientToServerEncryptionKey(baseHasher: Insecure.SHA1, sessionID: ByteBuffer, expectedKeySize: Int) -> SymmetricKey {
-        assert(expectedKeySize <= Insecure.SHA1.Digest.byteCount)
-        return SymmetricKey.truncatingDigest(self.generateSpecificHash(baseHasher: baseHasher, discriminatorByte: UInt8(ascii: "C"), sessionID: sessionID), length: expectedKeySize)
-    }
-
-    private func generateServerToClientEncryptionKey(baseHasher: Insecure.SHA1, sessionID: ByteBuffer, expectedKeySize: Int) -> SymmetricKey {
-        assert(expectedKeySize <= Insecure.SHA1.Digest.byteCount)
-        return SymmetricKey.truncatingDigest(self.generateSpecificHash(baseHasher: baseHasher, discriminatorByte: UInt8(ascii: "D"), sessionID: sessionID), length: expectedKeySize)
-    }
-
-    private func generateClientToServerMACKey(baseHasher: Insecure.SHA1, sessionID: ByteBuffer, expectedKeySize: Int) -> SymmetricKey {
-        assert(expectedKeySize <= Insecure.SHA1.Digest.byteCount)
-        return SymmetricKey.truncatingDigest(self.generateSpecificHash(baseHasher: baseHasher, discriminatorByte: UInt8(ascii: "E"), sessionID: sessionID), length: expectedKeySize)
-    }
-
-    private func generateServerToClientMACKey(baseHasher: Insecure.SHA1, sessionID: ByteBuffer, expectedKeySize: Int) -> SymmetricKey {
-        assert(expectedKeySize <= Insecure.SHA1.Digest.byteCount)
-        return SymmetricKey.truncatingDigest(self.generateSpecificHash(baseHasher: baseHasher, discriminatorByte: UInt8(ascii: "F"), sessionID: sessionID), length: expectedKeySize)
-    }
-
-    private func generateSpecificHash(baseHasher: Insecure.SHA1, discriminatorByte: UInt8, sessionID: ByteBuffer) -> Insecure.SHA1.Digest {
-        var localHasher = baseHasher
-        localHasher.update(byte: discriminatorByte)
-        localHasher.update(data: sessionID.readableBytesView)
-        return localHasher.finalize()
     }
 }
 
@@ -210,6 +294,88 @@ extension HashFunction {
             assert(bytePtr.count == 1, "Why is this 8 bit integer so large?")
             self.update(bufferPointer: bytePtr)
         }
+    }
+}
+
+extension ByteBuffer {
+    /// See: https://tools.ietf.org/html/rfc4251#section-4.1
+    ///
+    /// Represents multiple precision integers in two's complement format,
+    /// stored as a string, 8 bits per byte, MSB first.  Negative numbers
+    /// have the value 1 as the most significant bit of the first byte of
+    /// the data partition.  If the most significant bit would be set for
+    /// a positive number, the number MUST be preceded by a zero byte.
+    /// Unnecessary leading bytes with the value 0 or 255 MUST NOT be
+    /// included.  The value zero MUST be stored as a string with zero
+    /// bytes of data.
+    ///
+    /// By convention, a number that is used in modular computations in
+    /// Z_n SHOULD be represented in the range 0 <= x < n.
+    @discardableResult
+    mutating func writeMPBignum(_ bignum: BigUInt) -> Int {
+        let mpIntSizeOffset = writerIndex
+        reserveCapacity(minimumWritableBytes: 4 + ((bignum.bitWidth + 7) / 8))
+        moveWriterIndex(forwardBy: 4)
+        let size = writeBignum(bignum)
+        setInteger(UInt32(size), at: mpIntSizeOffset)
+        return 4 + size
+    }
+    
+    @discardableResult
+    mutating func writeBignum(_ bignum: BigUInt) -> Int {
+        var size = (bignum.bitWidth + 7) / 8
+        writeWithUnsafeMutableBytes(minimumWritableBytes: Int(size + 1)) { buffer in
+            let buffer = buffer.bindMemory(to: UInt8.self)
+
+            buffer.baseAddress!.pointee = 0
+            
+            let serialized = Array(bignum.serialize())
+            (buffer.baseAddress! + 1)
+                .assign(from: serialized, count: serialized.count)
+            
+            if buffer[1] & 0x80 != 0 {
+                size += 1
+            } else {
+                memmove(buffer.baseAddress, buffer.baseAddress! + 1, Int(size))
+            }
+            
+            return Int(size)
+        }
+        
+        return Int(size)
+    }
+    
+    @discardableResult
+    mutating func writeMPBignum(_ bignum: UnsafePointer<BIGNUM>) -> Int {
+        let projectedSize = 4 + Int(CCryptoBoringSSL_BN_num_bytes(bignum))
+        reserveCapacity(minimumWritableBytes: projectedSize)
+        let mpIntSizeOffset = writerIndex
+        moveWriterIndex(forwardBy: 4)
+        let size = writeBignum(bignum)
+        setInteger(UInt32(size), at: mpIntSizeOffset)
+        return 4 + size
+    }
+    
+    @discardableResult
+    mutating func writeBignum(_ bignum: UnsafePointer<BIGNUM>) -> Int {
+        var size = (CCryptoBoringSSL_BN_num_bits(bignum) + 7) / 8
+        writeWithUnsafeMutableBytes(minimumWritableBytes: Int(size + 1)) { buffer in
+            let buffer = buffer.bindMemory(to: UInt8.self)
+            
+            buffer.baseAddress!.pointee = 0
+            
+            CCryptoBoringSSL_BN_bn2bin(bignum, buffer.baseAddress! + 1)
+            
+            if buffer[1] & 0x80 != 0 {
+                size += 1
+            } else {
+                memmove(buffer.baseAddress, buffer.baseAddress! + 1, Int(size))
+            }
+            
+            return Int(size)
+        }
+        
+        return Int(size)
     }
 }
 
