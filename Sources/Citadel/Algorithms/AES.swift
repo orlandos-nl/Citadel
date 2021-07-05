@@ -11,6 +11,9 @@ enum CitadelError: Error {
     case invalidDecryptedPlaintextLength
     case insufficientPadding, excessPadding
     case invalidMac
+    case cryptographicError
+    case unsupported
+    case invalidSignature
 }
 
 public final class AES256CTR: NIOSSHTransportProtection {
@@ -61,8 +64,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             initialKeys.initialOutboundIV,
             1
         ) == 1 else {
-            #warning("Throw error")
-            fatalError()
+            throw CitadelError.cryptographicError
         }
         
         guard CCryptoBoringSSL_EVP_CipherInit(
@@ -72,8 +74,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             initialKeys.initialInboundIV,
             0
         ) == 1 else {
-            #warning("Throw error")
-            fatalError()
+            throw CitadelError.cryptographicError
         }
     }
     
@@ -106,8 +107,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             newKeys.initialOutboundIV,
             1
         ) == 1 else {
-            #warning("Throw error")
-            fatalError()
+            throw CitadelError.cryptographicError
         }
         
         guard CCryptoBoringSSL_EVP_CipherInit(
@@ -117,8 +117,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             newKeys.initialInboundIV,
             0
         ) == 1 else {
-            #warning("Throw error")
-            fatalError()
+            throw CitadelError.cryptographicError
         }
     }
     
@@ -129,7 +128,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
             throw CitadelError.invalidKeySize
         }
         
-        source.readWithUnsafeMutableReadableBytes { source in
+        try source.readWithUnsafeMutableReadableBytes { source in
             let source = source.bindMemory(to: UInt8.self)
             let out = UnsafeMutablePointer<UInt8>.allocate(capacity: Self.cipherBlockSize)
             defer { out.deallocate() }
@@ -140,8 +139,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
                 source.baseAddress!,
                 Self.cipherBlockSize
             ) == 1 else {
-                #warning("Throw error")
-                fatalError()
+                throw CitadelError.cryptographicError
             }
             
             memcpy(source.baseAddress!, out, Self.cipherBlockSize)
@@ -150,52 +148,42 @@ public final class AES256CTR: NIOSSHTransportProtection {
     }
     
     public func decryptAndVerifyRemainingPacket(_ source: inout ByteBuffer, sequenceNumber: UInt32) throws -> ByteBuffer {
-        var macHash: [UInt8]
-        var plaintext: [UInt8]
+        // The first 4 bytes are the length. The last 16 are the tag. Everything else is ciphertext. We expect
+        // that the ciphertext is a clean multiple of the block size, and to be non-zero.
+        guard
+            var plaintext = source.readBytes(length: 16),
+            let ciphertext = source.readBytes(length: source.readableBytes - macBytes),
+            let macHash = source.readBytes(length: macBytes),
+            ciphertext.count % Self.cipherBlockSize == 0
+        else {
+            // The only way this fails is if the payload doesn't match this encryption scheme.
+            throw CitadelError.invalidEncryptedPacketLength
+        }
 
-        // Establish a nested scope here to avoid the byte buffer views causing an accidental CoW.
-        do {
-            // The first 4 bytes are the length. The last 16 are the tag. Everything else is ciphertext. We expect
-            // that the ciphertext is a clean multiple of the block size, and to be non-zero.
-            guard
-                var plaintextView = source.readBytes(length: 16),
-                let ciphertextView = source.readBytes(length: source.readableBytes - macBytes),
-                let mac = source.readBytes(length: macBytes),
-                ciphertextView.count % Self.cipherBlockSize == 0
-            else {
-                // The only way this fails is if the payload doesn't match this encryption scheme.
-                throw CitadelError.invalidEncryptedPacketLength
-            }
-
-            if !ciphertextView.isEmpty {
-                // Ok, let's try to decrypt this data.
-                plaintextView += ciphertextView.withUnsafeBufferPointer { ciphertext -> [UInt8] in
-                    let ciphertextPointer = ciphertext.baseAddress!
+        if !ciphertext.isEmpty {
+            // Ok, let's try to decrypt this data.
+            plaintext += try ciphertext.withUnsafeBufferPointer { ciphertext -> [UInt8] in
+                let ciphertextPointer = ciphertext.baseAddress!
+                
+                return try [UInt8](
+                    unsafeUninitializedCapacity: ciphertext.count,
+                    initializingWith: { plaintext, count in
+                    let plaintextPointer = plaintext.baseAddress!
                     
-                    return [UInt8](
-                        unsafeUninitializedCapacity: ciphertextView.count,
-                        initializingWith: { plaintext, count in
-                        let plaintextPointer = plaintext.baseAddress!
-                        
-                        while count < ciphertext.count {
-                            guard CCryptoBoringSSL_EVP_Cipher(
-                                decryptionContext,
-                                plaintextPointer + count,
-                                ciphertextPointer + count,
-                                Self.cipherBlockSize
-                            ) == 1 else {
-                                #warning("Throw error")
-                                fatalError()
-                            }
-                            
-                            count += Self.cipherBlockSize
+                    while count < ciphertext.count {
+                        guard CCryptoBoringSSL_EVP_Cipher(
+                            decryptionContext,
+                            plaintextPointer + count,
+                            ciphertextPointer + count,
+                            Self.cipherBlockSize
+                        ) == 1 else {
+                            throw CitadelError.cryptographicError
                         }
-                    })
-                }
+                        
+                        count += Self.cipherBlockSize
+                    }
+                })
             }
-            
-            plaintext = plaintextView
-            macHash = mac
             
             // All good! A quick soundness check to verify that the length of the plaintext is ok.
             guard plaintext.count % Self.cipherBlockSize == 0 else {
@@ -296,10 +284,10 @@ public final class AES256CTR: NIOSSHTransportProtection {
         hmac.update(data: plaintext)
         let macHash = hmac.finalize()
         
-        let ciphertext = plaintext.withUnsafeBufferPointer { plaintext -> [UInt8] in
+        let ciphertext = try plaintext.withUnsafeBufferPointer { plaintext -> [UInt8] in
             let plaintextPointer = plaintext.baseAddress!
             
-            return [UInt8](unsafeUninitializedCapacity: plaintext.count) { ciphertext, count in
+            return try [UInt8](unsafeUninitializedCapacity: plaintext.count) { ciphertext, count in
                 let ciphertextPointer = ciphertext.baseAddress!
                 
                 while count < encryptedBufferSize {
@@ -309,8 +297,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
                         plaintextPointer + count,
                         Self.cipherBlockSize
                     ) == 1 else {
-                        #warning("Throw error")
-                        fatalError()
+                        throw CitadelError.cryptographicError
                     }
                     
                     count += Self.cipherBlockSize

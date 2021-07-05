@@ -51,7 +51,7 @@ extension Insecure.RSA {
 //
 //            let result = message.power(publicExponent, modulus: modulus)
 //            return EncryptedMessage(rawRepresentation: result.serialize())
-            fatalError()
+            throw CitadelError.unsupported
         }
         
         public func isValidSignature<D: DataProtocol>(_ signature: Signature, for digest: D) -> Bool {
@@ -213,7 +213,7 @@ extension Insecure.RSA {
 //                let result = self.signature(for: BigUInt(Data(message)))
 //                return Signature(rawRepresentation: result.serialize())
 //            }
-            fatalError()
+            throw CitadelError.unsupported
         }
         
         public func signature<D>(for data: D) throws -> NIOSSHSignatureProtocol where D : DataProtocol {
@@ -266,13 +266,12 @@ extension Insecure.RSA {
             return buffer.readData(length: buffer.readableBytes)!
         }
         
-        private func signature(for m: BigUInt) -> BigUInt {
+//        private func signature(for m: BigUInt) -> BigUInt {
 //            switch storage {
 //            case let .privateExponent(d, n):
 //                return m.power(d, modulus: n)
 //            }
-            fatalError()
-        }
+//        }
         
         public func decrypt(_ message: EncryptedMessage) throws -> Data {
 //            let signature = BigUInt(message.rawRepresentation)
@@ -285,7 +284,7 @@ extension Insecure.RSA {
 //
 //                return signature.power(privateExponent, modulus: modulus).serialize()
 //            }
-            fatalError()
+            throw CitadelError.unsupported
         }
         
         internal func generatedSharedSecret(with publicKey: PublicKey, modulus: BigUInt) -> Data {

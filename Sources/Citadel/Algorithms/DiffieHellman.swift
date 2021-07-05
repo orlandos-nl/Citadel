@@ -75,7 +75,7 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
     }
     
     public func completeKeyExchangeServerSide(clientKeyExchangeMessage message: ByteBuffer, serverHostKey: NIOSSHPrivateKey, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
-        fatalError()
+        throw CitadelError.unsupported
     }
     
     public func receiveServerKeyExchangePayload(serverHostKey hostKey: NIOSSHPublicKey, serverPublicKey publicKey: ByteBuffer, serverSignature signature: NIOSSHSignature, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
@@ -89,9 +89,7 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         
         // We can now verify signature over the exchange hash.
         guard hostKey.isValidSignature(signature, for: kexResult.exchangeHash) else {
-//            throw NIOSSHError.invalidExchangeHashSignature
-            #warning("Error thrown")
-            fatalError()
+            throw CitadelError.invalidSignature
         }
 
         // Great, all done here.
@@ -135,7 +133,7 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
             group,
             ctx
         ) == 1 else {
-            fatalError()
+            throw CitadelError.cryptographicError
         }
         
         var sharedSecret = [UInt8]()
