@@ -144,7 +144,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
                 fatalError()
             }
             
-            memcpy(source.baseAddress, out, Self.cipherBlockSize)
+            memcpy(source.baseAddress!, out, Self.cipherBlockSize)
             return 0
         }
     }

@@ -307,7 +307,7 @@ extension ByteBuffer {
             if buffer[1] & 0x80 != 0 {
                 size += 1
             } else {
-                memmove(buffer.baseAddress, buffer.baseAddress! + 1, Int(size))
+                memmove(buffer.baseAddress!, buffer.baseAddress! + 1, Int(size))
             }
             
             return Int(size)
