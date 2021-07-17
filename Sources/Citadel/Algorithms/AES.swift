@@ -2,7 +2,6 @@ import CCryptoBoringSSL
 import Foundation
 import Crypto
 import NIO
-import CryptoSwift
 import NIOSSH
 
 enum CitadelError: Error {
@@ -18,7 +17,7 @@ enum CitadelError: Error {
 
 public final class AES256CTR: NIOSSHTransportProtection {
     public static let macName: String? = "hmac-sha1"
-    public static let cipherBlockSize = AES.blockSize
+    public static let cipherBlockSize = 16
     public static let cipherName = "aes128-ctr"
     
     public static let keySizes = ExpectedKeySizes(
