@@ -11,8 +11,9 @@ enum CitadelError: Error {
     case insufficientPadding, excessPadding
     case invalidMac
     case cryptographicError
-    case unsupported
     case invalidSignature
+    case signingError
+    case unsupported
 }
 
 public final class AES256CTR: NIOSSHTransportProtection {

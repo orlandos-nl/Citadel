@@ -18,7 +18,7 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", .revision("3837545ba7b26913b8d8c51f791d87bc89590caa")),
+        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", .revision("316c8d6282e43df82595e3d0f5d5bc9f10e9f856")),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
     ],
     targets: [

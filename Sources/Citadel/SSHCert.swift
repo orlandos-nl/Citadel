@@ -1,3 +1,4 @@
+import CCryptoBoringSSL
 import BigInt
 import Foundation
 import Crypto
@@ -89,12 +90,12 @@ extension Insecure.RSA.PrivateKey {
         }
         
         guard
-            let n2DataLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let _ = privateKeyBuffer.readData(length: Int(n2DataLength)),
-            let e2DataLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let _ = privateKeyBuffer.readData(length: Int(e2DataLength)),
+            let nBytesLength = privateKeyBuffer.readInteger(as: UInt32.self),
+            let nBytes = privateKeyBuffer.readBytes(length: Int(nBytesLength)),
+            let eBytesLength = privateKeyBuffer.readInteger(as: UInt32.self),
+            let eBytes = privateKeyBuffer.readBytes(length: Int(eBytesLength)),
             let dLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let dData = privateKeyBuffer.readData(length: Int(dLength)),
+            let dBytes = privateKeyBuffer.readBytes(length: Int(dLength)),
             let iqmpLength = privateKeyBuffer.readInteger(as: UInt32.self),
             let _ = privateKeyBuffer.readData(length: Int(iqmpLength)),
             let pLength = privateKeyBuffer.readInteger(as: UInt32.self),
@@ -107,12 +108,10 @@ extension Insecure.RSA.PrivateKey {
             throw InvalidKey()
         }
         
-        let d = BigUInt(dData)
-        
-//        let e2 = BigUInt(e2Data)
-//        let n2 = BigUInt(n2Data)
+        let privateExponent = CCryptoBoringSSL_BN_bin2bn(dBytes, dBytes.count, nil)!
+        let publicExponent = CCryptoBoringSSL_BN_bin2bn(eBytes, eBytes.count, nil)!
+        let modulus = CCryptoBoringSSL_BN_bin2bn(nBytes, nBytes.count, nil)!
 
-//        self.init(privateExponent: d, publicExponent: n, modulus: e)
-        fatalError()
+        self.init(privateExponent: privateExponent, publicExponent: publicExponent, modulus: modulus)
     }
 }

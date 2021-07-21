@@ -11,15 +11,6 @@
         }
       },
       {
-        "package": "CryptoSwift",
-        "repositoryURL": "https://github.com/krzyzanowskim/CryptoSwift.git",
-        "state": {
-          "branch": null,
-          "revision": "4e31051c63cc0ddf10a25cf5318856c510cf77f4",
-          "version": "1.4.0"
-        }
-      },
-      {
         "package": "swift-crypto",
         "repositoryURL": "https://github.com/apple/swift-crypto.git",
         "state": {

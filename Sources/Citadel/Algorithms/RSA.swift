@@ -206,72 +206,49 @@ extension Insecure.RSA {
         }
         
         public func signature<D: DataProtocol>(for message: D) throws -> Signature {
-//            switch storage {
-//            case .privateExponent(let privateKey):
-//                let message = try Self.encodePKCS1SHA1(message, length: (n.bitWidth + 7) / 8)
-//
-//                let result = self.signature(for: BigUInt(Data(message)))
-//                return Signature(rawRepresentation: result.serialize())
-//            }
-            throw CitadelError.unsupported
+            let context = CCryptoBoringSSL_RSA_new()
+            defer { CCryptoBoringSSL_RSA_free(context) }
+
+            // Copy, so that our local `self.modulus` isn't freed by RSA_free
+            let modulus = CCryptoBoringSSL_BN_new()!
+            let publicExponent = CCryptoBoringSSL_BN_new()!
+            let privateExponent = CCryptoBoringSSL_BN_new()!
+            
+            CCryptoBoringSSL_BN_copy(modulus, self._publicKey.modulus)
+            CCryptoBoringSSL_BN_copy(publicExponent, self._publicKey.publicExponent)
+            CCryptoBoringSSL_BN_copy(privateExponent, self.privateExponent)
+            guard CCryptoBoringSSL_RSA_set0_key(
+                context,
+                modulus,
+                publicExponent,
+                privateExponent
+            ) == 1 else {
+                throw CitadelError.signingError
+            }
+            
+            let hash = Array(Insecure.SHA1.hash(data: message))
+            let out = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
+            defer { out.deallocate() }
+            var outLength: UInt32 = 4096
+            let result = CCryptoBoringSSL_RSA_sign(
+                NID_sha1,
+                hash,
+                UInt32(hash.count),
+                out,
+                &outLength,
+                context
+            )
+            
+            guard result == 1 else {
+                throw CitadelError.signingError
+            }
+            
+            return Signature(rawRepresentation: Data(bytes: out, count: Int(outLength)))
         }
         
         public func signature<D>(for data: D) throws -> NIOSSHSignatureProtocol where D : DataProtocol {
             return try self.signature(for: data) as Signature
         }
-        
-        private static func encodePKCS1SHA1<D: DataProtocol>(_ data: D, length: Int) throws -> Data {
-            /*
-             * This is the magic ASN.1/DER prefix that goes in the decoded
-             * signature, between the string of FFs and the actual SHA-1
-             * hash value. The meaning of it is:
-             *
-             * 00 -- this marks the end of the FFs; not part of the ASN.1
-             * bit itself
-             *
-             * 30 21 -- a constructed SEQUENCE of length 0x21
-             *    30 09 -- a constructed sub-SEQUENCE of length 9
-             *       06 05 -- an object identifier, length 5
-             *          2B 0E 03 02 1A -- object id { 1 3 14 3 2 26 }
-             *                            (the 1,3 comes from 0x2B = 43 = 40*1+3)
-             *       05 00 -- NULL
-             *    04 14 -- a primitive OCTET STRING of length 0x14
-             *       [0x14 bytes of hash data follows]
-             *
-             * The object id in the middle there is listed as `id-sha1' in
-             * ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-1/pkcs-1v2-1d2.asn
-             * (the ASN module for PKCS #1) and its expanded form is as
-             * follows:
-             *
-             * id-sha1                OBJECT IDENTIFIER ::= {
-             *    iso(1) identified-organization(3) oiw(14) secsig(3)
-             *    algorithms(2) 26 }
-             */
-            let prefix: [UInt8] = [
-                0x00, 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B,
-                0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14,
-            ]
-            
-            let padding = length - prefix.count - 2 - Insecure.SHA1.Digest.byteCount
-            
-            var buffer = ByteBuffer()
-            buffer.writeInteger(0 as UInt8)
-            buffer.writeInteger(1 as UInt8)
-            for _ in 0..<padding {
-                buffer.writeInteger(0xff as UInt8)
-            }
-            buffer.writeBytes(prefix)
-            buffer.writeBytes(Insecure.SHA1.hash(data: data))
-            
-            return buffer.readData(length: buffer.readableBytes)!
-        }
-        
-//        private func signature(for m: BigUInt) -> BigUInt {
-//            switch storage {
-//            case let .privateExponent(d, n):
-//                return m.power(d, modulus: n)
-//            }
-//        }
         
         public func decrypt(_ message: EncryptedMessage) throws -> Data {
 //            let signature = BigUInt(message.rawRepresentation)
