@@ -143,7 +143,7 @@ extension SSHClient {
                     SSHChannelRequestEvent.SubsystemRequest(
                         subsystem: "sftp",
                         wantReply: true
-                    ),`missingResponse
+                    ),
                     promise: openSubsystem
                 )
                 
