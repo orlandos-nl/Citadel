@@ -127,27 +127,8 @@ extension SSHClient {
         eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
             let createClient = self.eventLoop.makePromise(of: SFTPClient.self)
-            self.session.sshHandler.createChannel { channel, _ in
-                
-                SFTPClient.setupChannelHanders(channel: channel, sshClient: self).flatMap { client in
-                    let openSubsystem = self.eventLoop.makePromise(of: Void.self)
-                    
-                    channel.triggerUserOutboundEvent(
-                        SSHChannelRequestEvent.SubsystemRequest(
-                            subsystem: "sftp",
-                            wantReply: true
-                        ),
-                        promise: openSubsystem
-                    )
-                    
-                    return openSubsystem.futureResult.flatMap {
-                        client.channel.writeAndFlush(SFTPMessage.initialize(.init(version: 3)))
-                    }.flatMap {
-                        return client.responses.initialized.futureResult
-                    }.map { _ in
-                        client
-                    }
-                }.map(createClient.succeed)
+            self.session.sshHandler.createChannel(createChannel) { channel, _ in
+                SFTPClient.setupChannelHanders(channel: channel, sshClient: self).map(createClient.succeed)
             }
             
             self.eventLoop.scheduleTask(in: .seconds(15)) {
@@ -155,7 +136,27 @@ extension SSHClient {
                 createClient.fail(SFTPError.missingResponse)
             }
             
-            return createClient.futureResult
+            return createChannel.futureResult.flatMap { channel in
+                let openSubsystem = self.eventLoop.makePromise(of: Void.self)
+                
+                channel.triggerUserOutboundEvent(
+                    SSHChannelRequestEvent.SubsystemRequest(
+                        subsystem: "sftp",
+                        wantReply: true
+                    ),`missingResponse
+                    promise: openSubsystem
+                )
+                
+                return openSubsystem.futureResult
+            }.flatMap {
+                createClient.futureResult
+            }.flatMap { client in
+                client.channel.writeAndFlush(SFTPMessage.initialize(.init(version: 3))).flatMap {
+                    return client.responses.initialized.futureResult
+                }.map { _ in
+                    client
+                }
+            }
         }
     }
 }
