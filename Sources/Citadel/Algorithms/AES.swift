@@ -1,7 +1,7 @@
+import CCryptoBoringSSL
 import Foundation
 import Crypto
 import NIO
-import CryptoSwift
 import NIOSSH
 
 enum CitadelError: Error {
@@ -10,62 +10,115 @@ enum CitadelError: Error {
     case invalidDecryptedPlaintextLength
     case insufficientPadding, excessPadding
     case invalidMac
+    case cryptographicError
+    case invalidSignature
+    case signingError
+    case unsupported
 }
 
 public final class AES256CTR: NIOSSHTransportProtection {
     public static let macName: String? = "hmac-sha1"
-    public static let cipherBlockSize = AES.blockSize
-    public static let cipherName = "aes256-ctr"
+    public static let cipherBlockSize = 16
+    public static let cipherName = "aes128-ctr"
     
     public static let keySizes = ExpectedKeySizes(
         ivSize: 16,
-        encryptionKeySize: 32, // 256 bits
-        macKeySize: 16
+        encryptionKeySize: 16, // 128 bits
+        macKeySize: 20 // HAMC-SHA-1
     )
     
-    public let macBytes = 16
+    public let macBytes = 20 // HAMC-SHA-1
     private var keys: NIOSSHSessionKeys
-    private var outboundAES: CryptoSwift.AES
-    private var inboundAES: CryptoSwift.AES
-    private var decryptionSequenceNumber: UInt32 = 0
-    private var encryptionSequenceNumber: UInt32 = 0
+    private var decryptionContext: UnsafeMutablePointer<EVP_CIPHER_CTX>
+    private var encryptionContext: UnsafeMutablePointer<EVP_CIPHER_CTX>
     
     public init(initialKeys: NIOSSHSessionKeys) throws {
-        guard initialKeys.outboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8,
-            initialKeys.inboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8 else {
+        guard
+            initialKeys.outboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8,
+            initialKeys.inboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8
+        else {
             throw CitadelError.invalidKeySize
         }
 
         self.keys = initialKeys
         
-        let inboundKey = initialKeys.inboundEncryptionKey.withUnsafeBytes { buffer in
-            Array(buffer.bindMemory(to: UInt8.self))
-        }
-        self.inboundAES = try AES(key: inboundKey, blockMode: CTR(iv: initialKeys.initialInboundIV))
+        self.encryptionContext = CCryptoBoringSSL_EVP_CIPHER_CTX_new()
+        self.decryptionContext = CCryptoBoringSSL_EVP_CIPHER_CTX_new()
         
-        let outboundKey = initialKeys.inboundEncryptionKey.withUnsafeBytes { buffer in
-            Array(buffer.bindMemory(to: UInt8.self))
+        let outboundEncryptionKey = initialKeys.outboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
+            let outboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
+            assert(outboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            return outboundEncryptionKey
         }
-        self.outboundAES = try AES(key: outboundKey, blockMode: CTR(iv: initialKeys.initialInboundIV))
+        
+        let inboundEncryptionKey = initialKeys.inboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
+            let inboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
+            assert(inboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            return inboundEncryptionKey
+        }
+        
+        guard CCryptoBoringSSL_EVP_CipherInit(
+            encryptionContext,
+            CCryptoBoringSSL_EVP_aes_128_ctr(),
+            outboundEncryptionKey,
+            initialKeys.initialOutboundIV,
+            1
+        ) == 1 else {
+            throw CitadelError.cryptographicError
+        }
+        
+        guard CCryptoBoringSSL_EVP_CipherInit(
+            decryptionContext,
+            CCryptoBoringSSL_EVP_aes_128_ctr(),
+            inboundEncryptionKey,
+            initialKeys.initialInboundIV,
+            0
+        ) == 1 else {
+            throw CitadelError.cryptographicError
+        }
     }
     
     public func updateKeys(_ newKeys: NIOSSHSessionKeys) throws {
-        guard newKeys.outboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8,
-            newKeys.inboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8 else {
-                throw CitadelError.invalidKeySize
+        guard
+            newKeys.outboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8,
+            newKeys.inboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8
+        else {
+            throw CitadelError.invalidKeySize
         }
 
         self.keys = newKeys
         
-        let inboundKey = newKeys.inboundEncryptionKey.withUnsafeBytes { buffer in
-            Array(buffer.bindMemory(to: UInt8.self))
+        let outboundEncryptionKey = newKeys.outboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
+            let outboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
+            assert(outboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            return outboundEncryptionKey
         }
-        self.inboundAES = try AES(key: inboundKey, blockMode: CTR(iv: newKeys.initialInboundIV))
         
-        let outboundKey = newKeys.outboundEncryptionKey.withUnsafeBytes { buffer in
-            Array(buffer.bindMemory(to: UInt8.self))
+        let inboundEncryptionKey = newKeys.inboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
+            let inboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
+            assert(inboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            return inboundEncryptionKey
         }
-        self.outboundAES = try AES(key: outboundKey, blockMode: CTR(iv: newKeys.initialOutboundIV))
+        
+        guard CCryptoBoringSSL_EVP_CipherInit(
+            encryptionContext,
+            CCryptoBoringSSL_EVP_aes_256_ctr(),
+            outboundEncryptionKey,
+            newKeys.initialOutboundIV,
+            1
+        ) == 1 else {
+            throw CitadelError.cryptographicError
+        }
+        
+        guard CCryptoBoringSSL_EVP_CipherInit(
+            decryptionContext,
+            CCryptoBoringSSL_EVP_aes_256_ctr(),
+            inboundEncryptionKey,
+            newKeys.initialInboundIV,
+            0
+        ) == 1 else {
+            throw CitadelError.cryptographicError
+        }
     }
     
     public func decryptFirstBlock(_ source: inout ByteBuffer) throws {
@@ -75,71 +128,103 @@ public final class AES256CTR: NIOSSHTransportProtection {
             throw CitadelError.invalidKeySize
         }
         
-        try source.withUnsafeMutableReadableBytes { source in
+        try source.readWithUnsafeMutableReadableBytes { source in
             let source = source.bindMemory(to: UInt8.self)
-            let decrypted = try inboundAES.decrypt(Array(source[0..<16]))
-            source.baseAddress!.assign(from: decrypted, count: 16)
+            let out = UnsafeMutablePointer<UInt8>.allocate(capacity: Self.cipherBlockSize)
+            defer { out.deallocate() }
+            
+            guard CCryptoBoringSSL_EVP_Cipher(
+                decryptionContext,
+                out,
+                source.baseAddress!,
+                Self.cipherBlockSize
+            ) == 1 else {
+                throw CitadelError.cryptographicError
+            }
+            
+            memcpy(source.baseAddress!, out, Self.cipherBlockSize)
+            return 0
         }
     }
     
-    public func decryptAndVerifyRemainingPacket(_ source: inout ByteBuffer) throws -> ByteBuffer {
-        var plaintext: [UInt8]
-        var macHash: [UInt8]
+    public func decryptAndVerifyRemainingPacket(_ source: inout ByteBuffer, sequenceNumber: UInt32) throws -> ByteBuffer {
+        // The first 4 bytes are the length. The last 16 are the tag. Everything else is ciphertext. We expect
+        // that the ciphertext is a clean multiple of the block size, and to be non-zero.
+        guard
+            var plaintext = source.readBytes(length: 16),
+            let ciphertext = source.readBytes(length: source.readableBytes - macBytes),
+            let macHash = source.readBytes(length: macBytes),
+            ciphertext.count % Self.cipherBlockSize == 0
+        else {
+            // The only way this fails is if the payload doesn't match this encryption scheme.
+            throw CitadelError.invalidEncryptedPacketLength
+        }
 
-        // Establish a nested scope here to avoid the byte buffer views causing an accidental CoW.
-        do {
-            // The first 4 bytes are the length. The last 16 are the tag. Everything else is ciphertext. We expect
-            // that the ciphertext is a clean multiple of the block size, and to be non-zero.
-            guard
-                let lengthView = source.readSlice(length: 4)?.readableBytesView,
-                let ciphertextView = source.readBytes(length: source.readableBytes - macBytes),
-                let mac = source.readBytes(length: macBytes),
-                ciphertextView.count > 0, ciphertextView.count % Self.cipherBlockSize == 0
-            else {
-                // The only way this fails is if the payload doesn't match this encryption scheme.
-                throw CitadelError.invalidEncryptedPacketLength
-            }
-
+        if !ciphertext.isEmpty {
             // Ok, let's try to decrypt this data.
-            plaintext = try inboundAES.decrypt(ciphertextView)
-            macHash = mac
+            plaintext += try ciphertext.withUnsafeBufferPointer { ciphertext -> [UInt8] in
+                let ciphertextPointer = ciphertext.baseAddress!
+                
+                return try [UInt8](
+                    unsafeUninitializedCapacity: ciphertext.count,
+                    initializingWith: { plaintext, count in
+                    let plaintextPointer = plaintext.baseAddress!
+                    
+                    while count < ciphertext.count {
+                        guard CCryptoBoringSSL_EVP_Cipher(
+                            decryptionContext,
+                            plaintextPointer + count,
+                            ciphertextPointer + count,
+                            Self.cipherBlockSize
+                        ) == 1 else {
+                            throw CitadelError.cryptographicError
+                        }
+                        
+                        count += Self.cipherBlockSize
+                    }
+                })
+            }
             
             // All good! A quick soundness check to verify that the length of the plaintext is ok.
-            guard plaintext.count % Self.cipherBlockSize == 0, plaintext.count == ciphertextView.count else {
+            guard plaintext.count % Self.cipherBlockSize == 0 else {
                 throw CitadelError.invalidDecryptedPlaintextLength
             }
         }
         
-        // Ok, we want to write the plaintext back into the buffer. This contains the padding length byte and the padding
-        // bytes, so we want to strip those. We write back into the buffer and then slice the return value out because
-        // it's highly likely that the source buffer is held uniquely, which means we can avoid an allocation.
-        try plaintext.removePaddingBytes()
-        source.prependBytes(plaintext)
-        
-        // This slice read must succeed, as we just wrote in that many bytes.
-        let result = source.readSlice(length: plaintext.count)!
-        
-        var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.inboundMACKey)
-        decryptionSequenceNumber._cVarArgEncoding.withUnsafeBytes { buffer in
-            hmac.update(data: buffer)
-        }
-        hmac.update(data: result.readableBytesView)
-        
-        let isValid = hmac.finalize().withUnsafeBytes { buffer -> Bool in
-            let buffer = Array(buffer.bindMemory(to: UInt8.self))
-            return buffer == macHash
+        func test(sequenceNumber: UInt32) -> Bool {
+            var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.inboundMACKey)
+            withUnsafeBytes(of: sequenceNumber.bigEndian) { buffer in
+                hmac.update(data: buffer)
+            }
+            hmac.update(data: plaintext)
+            
+            return hmac.finalize().withUnsafeBytes { buffer -> Bool in
+                let buffer = Array(buffer.bindMemory(to: UInt8.self))
+                return buffer == macHash
+            }
         }
         
-        if !isValid {
+        if !test(sequenceNumber: sequenceNumber) {
             throw CitadelError.invalidMac
         }
         
-        decryptionSequenceNumber = decryptionSequenceNumber &+ 1
-
-        return result
+        plaintext.removeFirst(4)
+        let paddingLength = Int(plaintext.removeFirst())
+        
+        guard paddingLength < plaintext.count else {
+            throw CitadelError.invalidDecryptedPlaintextLength
+        }
+        
+        plaintext.removeLast(paddingLength)
+        
+        return ByteBuffer(bytes: plaintext)
     }
     
-    public func encryptPacket(_ packet: NIOSSHEncryptablePayload, to outboundBuffer: inout ByteBuffer) throws {
+    public func encryptPacket(
+        _ packet: NIOSSHEncryptablePayload,
+        to outboundBuffer: inout ByteBuffer,
+        sequenceNumber: UInt32
+    ) throws {
         // Keep track of where the length is going to be written.
         let packetLengthIndex = outboundBuffer.writerIndex
         let packetLengthLength = MemoryLayout<UInt32>.size
@@ -164,61 +249,72 @@ public final class AES256CTR: NIOSSHTransportProtection {
         // So we check how many bytes we've already written, use modular arithmetic to work out
         // how many more bytes we need, and then if that's fewer than 4 we add a block size to it
         // to fill it out.
-        var encryptedBufferSize = payloadBytes + packetPaddingLength
-        var necessaryPaddingBytes = Self.cipherBlockSize - (encryptedBufferSize % Self.cipherBlockSize)
-        if necessaryPaddingBytes < 4 {
-            necessaryPaddingBytes += Self.cipherBlockSize
+        let headerLength = packetLengthLength + packetPaddingLength
+        var encryptedBufferSize = headerLength + payloadBytes
+        let writtenBytes = headerLength + payloadBytes
+        var paddingLength = Self.cipherBlockSize - (writtenBytes % Self.cipherBlockSize)
+        if paddingLength < 4 {
+            paddingLength += Self.cipherBlockSize
+        }
+        
+        if headerLength + payloadBytes + paddingLength < Self.cipherBlockSize {
+            paddingLength = Self.cipherBlockSize - headerLength - payloadBytes
         }
 
         // We now want to write that many padding bytes to the end of the buffer. These are supposed to be
         // random bytes. We're going to get those from the system random number generator.
-        encryptedBufferSize += outboundBuffer.writeSSHPaddingBytes(count: necessaryPaddingBytes)
+        encryptedBufferSize += outboundBuffer.writeSSHPaddingBytes(count: paddingLength)
         precondition(encryptedBufferSize % Self.cipherBlockSize == 0, "Incorrectly counted buffer size; got \(encryptedBufferSize)")
 
         // We now know the length: it's going to be "encrypted buffer size". The length does not include the tag, so don't add it.
         // Let's write that in. We also need to write the number of padding bytes in.
-        outboundBuffer.setInteger(UInt32(encryptedBufferSize), at: packetLengthIndex)
-        outboundBuffer.setInteger(UInt8(necessaryPaddingBytes), at: packetPaddingIndex)
+        outboundBuffer.setInteger(UInt32(encryptedBufferSize - packetLengthLength), at: packetLengthIndex)
+        outboundBuffer.setInteger(UInt8(paddingLength), at: packetPaddingIndex)
 
         // Ok, nice! Now we need to encrypt the data. We pass the length field as additional authenticated data, and the encrypted
         // payload portion as the data to encrypt. We know these views will be valid, so we forcibly unwrap them: if they're invalid,
         // our math was wrong and we cannot recover.
         let plaintext = outboundBuffer.getBytes(at: packetLengthIndex, length: encryptedBufferSize)!
+        assert(plaintext.count % Self.cipherBlockSize == 0)
         
         var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.outboundMACKey)
-        decryptionSequenceNumber._cVarArgEncoding.withUnsafeBytes { buffer in
+        withUnsafeBytes(of: sequenceNumber.bigEndian) { buffer in
             hmac.update(data: buffer)
         }
         hmac.update(data: plaintext)
         let macHash = hmac.finalize()
         
-        let ciphertext = try outboundAES.encrypt(plaintext)
-        assert(ciphertext.count == encryptedBufferSize)
+        let ciphertext = try plaintext.withUnsafeBufferPointer { plaintext -> [UInt8] in
+            let plaintextPointer = plaintext.baseAddress!
+            
+            return try [UInt8](unsafeUninitializedCapacity: plaintext.count) { ciphertext, count in
+                let ciphertextPointer = ciphertext.baseAddress!
+                
+                while count < encryptedBufferSize {
+                    guard CCryptoBoringSSL_EVP_Cipher(
+                        encryptionContext,
+                        ciphertextPointer + count,
+                        plaintextPointer + count,
+                        Self.cipherBlockSize
+                    ) == 1 else {
+                        throw CitadelError.cryptographicError
+                    }
+                    
+                    count += Self.cipherBlockSize
+                }
+            }
+        }
 
+        assert(ciphertext.count == plaintext.count)
         // We now want to overwrite the portion of the bytebuffer that contains the plaintext with the ciphertext, and then append the
         // tag.
-        outboundBuffer.setContiguousBytes(ciphertext, at: packetPaddingIndex)
-        
-        let tagLength = outboundBuffer.writeContiguousBytes(macHash)
-        precondition(tagLength == self.macBytes, "Unexpected short tag")
+        outboundBuffer.setBytes(ciphertext, at: packetLengthIndex)
+        outboundBuffer.writeContiguousBytes(macHash)
     }
-}
-
-extension Array where Element == UInt8 {
-    /// Removes the padding bytes from a Data object.
-    fileprivate mutating func removePaddingBytes() throws {
-        guard let paddingLength = self.first, paddingLength >= 4 else {
-            throw CitadelError.insufficientPadding
-        }
-
-        // We're going to slice out the content bytes. To do that, can simply find the end index of the content, and confirm it's
-        // not walked off the front of the buffer. If it has, there's too much padding and an error has occurred.
-        let contentStartIndex = self.index(after: self.startIndex)
-        guard let contentEndIndex = self.index(self.endIndex, offsetBy: -Int(paddingLength), limitedBy: contentStartIndex) else {
-            throw CitadelError.excessPadding
-        }
-
-        self = Array(self[contentStartIndex ..< contentEndIndex])
+    
+    deinit {
+        CCryptoBoringSSL_EVP_CIPHER_CTX_free(encryptionContext)
+        CCryptoBoringSSL_EVP_CIPHER_CTX_free(decryptionContext)
     }
 }
 

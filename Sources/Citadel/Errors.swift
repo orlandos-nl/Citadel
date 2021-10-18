@@ -13,4 +13,5 @@ enum SFTPError: Error {
     case invalidResponse
     case noResponseTarget
     case connectionClosed
+    case missingResponse
 }

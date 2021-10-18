@@ -17,7 +17,7 @@ public final class SFTPClient {
         self.responses = responses
     }
     
-    static func initialize(channel: Channel, sshClient: SSHClient) -> EventLoopFuture<SFTPClient> {
+    static func setupChannelHanders(channel: Channel, sshClient: SSHClient) -> EventLoopFuture<SFTPClient> {
         let responses = SFTPResponses(initialized: channel.eventLoop.makePromise())
         
         let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
@@ -31,17 +31,13 @@ public final class SFTPClient {
             serializeHandler,
             sftpInboundHandler,
             CloseErrorHandler()
-        ).flatMap {
+        ).map {
             let client = SFTPClient(sshClient: sshClient, channel: channel, responses: responses)
-            return client.channel.writeAndFlush(SFTPMessage.initialize(.init(version: 3))).flatMap {
-                return responses.initialized.futureResult
-            }.map { _ in
-                // TODO: Check version
-                client.channel.closeFuture.whenComplete { _ in
-                    responses.close()
-                }
-                return client
+            // TODO: Check version
+            client.channel.closeFuture.whenComplete { _ in
+                responses.close()
             }
+            return client
         }
     }
     
@@ -130,8 +126,14 @@ extension SSHClient {
     public func openSFTP() -> EventLoopFuture<SFTPClient> {
         eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
+            let createClient = self.eventLoop.makePromise(of: SFTPClient.self)
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                return channel.eventLoop.makeSucceededFuture(())
+                SFTPClient.setupChannelHanders(channel: channel, sshClient: self).map(createClient.succeed)
+            }
+            
+            self.eventLoop.scheduleTask(in: .seconds(15)) {
+                createChannel.fail(SFTPError.missingResponse)
+                createClient.fail(SFTPError.missingResponse)
             }
             
             return createChannel.futureResult.flatMap { channel in
@@ -145,8 +147,14 @@ extension SSHClient {
                     promise: openSubsystem
                 )
                 
-                return openSubsystem.futureResult.flatMap {
-                    SFTPClient.initialize(channel: channel, sshClient: self)
+                return openSubsystem.futureResult
+            }.flatMap {
+                createClient.futureResult
+            }.flatMap { client in
+                client.channel.writeAndFlush(SFTPMessage.initialize(.init(version: 3))).flatMap {
+                    return client.responses.initialized.futureResult
+                }.map { _ in
+                    client
                 }
             }
         }
