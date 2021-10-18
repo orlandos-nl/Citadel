@@ -70,8 +70,8 @@ extension Insecure.RSA.PrivateKey {
             throw InvalidKey()
         }
 
-        let e = BigUInt(eData)
-        let n = BigUInt(nData)
+        let _ = BigUInt(eData) // e
+        let _ = BigUInt(nData) // n
 
         guard
             let privateKeyLength = buffer.readInteger(as: UInt32.self),

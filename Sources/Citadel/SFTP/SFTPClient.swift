@@ -83,8 +83,7 @@ public final class SFTPClient {
     func writeFile(
         handle: ByteBuffer,
         data: ByteBuffer,
-        offset: UInt64,
-        length: UInt32
+        offset: UInt64
     ) -> EventLoopFuture<Void> {
         return sendRequest(
             .write(

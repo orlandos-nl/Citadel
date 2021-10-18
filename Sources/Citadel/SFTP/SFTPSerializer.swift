@@ -27,7 +27,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(0 as UInt32)
 //            out.writeSFTPFileAttribues(openFile.attributes)
         case .closeFile(var closeFile):
-        out.writeInteger(SFTPMessage.CloseFile.id.rawValue)
+            out.writeInteger(SFTPMessage.CloseFile.id.rawValue)
             out.writeInteger(closeFile.requestId)
             out.writeSSHString(&closeFile.handle)
         case .read(var read):
