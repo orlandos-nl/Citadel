@@ -25,6 +25,27 @@ final class Citadel2Tests: XCTestCase {
         XCTAssertEqual(bigInt, sameBigInt)
     }
     
+    func testTTY() throws {
+        let client = try SSHClient.connect(
+            host: "10.211.55.4",
+            authenticationMethod: .passwordBased(username: "parallels", password: ""),
+            hostKeyValidator: .acceptAnything(),
+            reconnect: .never
+        ).wait()
+        
+        let tty = try client.openTTY().wait()
+        
+        do {
+            let buffer = try tty.executeCommand("asd").wait()
+            print(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        } catch let error as TTYSTDError {
+            let buffer = error.message
+            XCTFail(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        } catch {
+            XCTFail("Error: \(error)")
+        }
+    }
+    
     func testMPInt() throws {
         do {
             var buffer = ByteBuffer()
