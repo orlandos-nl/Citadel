@@ -1,34 +1,45 @@
 import NIO
 
+private let maxBufferSize = 32768
 public struct SFTPFile {
     let handle: ByteBuffer
     let client: SFTPClient
     
-    public func readChunk(from offset: UInt64 = 0, length: UInt32) -> EventLoopFuture<ByteBuffer> {
-        client.readFile(handle: handle, offset: offset, length: length)
+    public func readChunk(from offset: UInt64 = 0, length: UInt32) async throws -> ByteBuffer {
+        try await client.readFile(handle: handle, offset: offset, length: Swift.min(length, UInt32(maxBufferSize)))
     }
     
-    public func readAll() -> EventLoopFuture<ByteBuffer> {
+    public func readAll(maxLength: Int = .max) async throws -> ByteBuffer {
         var buffer = ByteBuffer()
 
-        func next() -> EventLoopFuture<Void> {
-            self.readChunk(from: UInt64(buffer.writerIndex), length: .max).flatMap { inboundData in
-                var inboundData = inboundData
-                if buffer.writeBuffer(&inboundData) == 0 {
-                    return self.client.channel.eventLoop.makeSucceededVoidFuture()
-                }
-
-                return next()
-            }.recover { _ in }
+        while buffer.readableBytes < maxLength {
+            let nextChunkSize = Swift.min(maxLength - buffer.readableBytes, maxBufferSize)
+            var inboundData = try await readChunk(
+                from: UInt64(buffer.writerIndex),
+                length: UInt32(nextChunkSize)
+            )
+            
+            buffer.writeBuffer(&inboundData)
+                               
+            if inboundData.readableBytes < nextChunkSize {
+                return buffer
+            }
         }
 
-        return next().map {
-            buffer
-        }
+        return buffer
     }
     
-    public func writeChunk(at offset: UInt64 = 0, data: ByteBuffer) -> EventLoopFuture<Void> {
+    public func writeChunk(at offset: UInt64 = 0, data buffer: ByteBuffer) async throws {
+        var buffer = buffer
         
-        client.writeFile(handle: handle, data: data, offset: offset)
+        while buffer.readableBytes > 0 {
+            let slice = buffer.readSlice(length: Swift.min(maxBufferSize, buffer.readableBytes))!
+            
+            try await client.writeFileChunk(
+                handle: handle,
+                data: slice,
+                offset: offset + UInt64(buffer.readerIndex)
+            )
+        }
     }
 }

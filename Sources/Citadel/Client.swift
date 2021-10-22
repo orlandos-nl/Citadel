@@ -25,18 +25,18 @@ public final class SSHClient {
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator
-    ) -> EventLoopFuture<SSHClient> {
-        SSHClientSession.connect(
+    ) async throws -> SSHClient {
+        let session = try await SSHClientSession.connect(
             on: channel,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: hostKeyValidator
-        ).map { session in
-            return SSHClient(
-                session: session,
-                authenticationMethod: authenticationMethod,
-                hostKeyValidator: hostKeyValidator
-            )
-        }
+        )
+        
+        return SSHClient(
+            session: session,
+            authenticationMethod: authenticationMethod,
+            hostKeyValidator: hostKeyValidator
+        )
     }
     
     public static func connect(
@@ -46,31 +46,31 @@ public final class SSHClient {
         hostKeyValidator: SSHHostKeyValidator,
         reconnect: SSHReconnectMode,
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
-    ) -> EventLoopFuture<SSHClient> {
-        return SSHClientSession.connect(
+    ) async throws -> SSHClient {
+        let session = try await SSHClientSession.connect(
             host: host,
             port: port,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: hostKeyValidator,
             group: group
-        ).map { session in
-            let client = SSHClient(
-                session: session,
-                authenticationMethod: authenticationMethod,
-                hostKeyValidator: hostKeyValidator
-            )
-            
-            switch reconnect.mode {
-            case .always:
-                client.connectionSettings.reconnect = .always(to: host, port: port)
-            case .once:
-                client.connectionSettings.reconnect = .once(to: host, port: port)
-            case .never:
-                client.connectionSettings.reconnect = .never
-            }
-            
-            return client
+        )
+        
+        let client = SSHClient(
+            session: session,
+            authenticationMethod: authenticationMethod,
+            hostKeyValidator: hostKeyValidator
+        )
+        
+        switch reconnect.mode {
+        case .always:
+            client.connectionSettings.reconnect = .always(to: host, port: port)
+        case .once:
+            client.connectionSettings.reconnect = .once(to: host, port: port)
+        case .never:
+            client.connectionSettings.reconnect = .never
         }
+        
+        return client
     }
     
     private func onNewSession(_ session: SSHClientSession) {
@@ -80,42 +80,42 @@ public final class SSHClient {
     }
     
     private func onClose() {
-        switch connectionSettings.reconnect.mode {
-        case .never:
-            return
-        case .once(let host, let port):
-            _ = self.recreateSession(host: host, port: port)
-        case .always(let host, let port):
-            func tryAgain() -> EventLoopFuture<Void> {
-                recreateSession(host: host, port: port).flatMapError { _ in
-                    return tryAgain()
+        Task {
+            switch connectionSettings.reconnect.mode {
+            case .never:
+                return
+            case .once(let host, let port):
+                _ = try? await self.recreateSession(host: host, port: port)
+            case .always(let host, let port):
+                func tryAgain() async throws {
+                    do {
+                        try await self.recreateSession(host: host, port: port)
+                    } catch {
+                        return try await tryAgain()
+                    }
                 }
+                
+                _ = try? await tryAgain()
             }
-            
-            _ = tryAgain()
         }
     }
     
-    private func recreateSession(host: String, port: Int) -> EventLoopFuture<Void> {
+    private func recreateSession(host: String, port: Int) async throws {
         if userInitiatedClose {
-            return self.eventLoop.makeSucceededVoidFuture()
+            return
         }
         
-        return SSHClientSession.connect(
+        self.session = try await SSHClientSession.connect(
             host: host,
             port: port,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: self.hostKeyValidator,
             group: session.channel.eventLoop
-        ).map { session in
-            self.session = session
-        }
+        )
     }
     
-    public func close() -> EventLoopFuture<Void> {
-        return session.channel.eventLoop.flatSubmit {
-            self.userInitiatedClose = true
-            return self.session.channel.close()
-        }
+    public func close() async throws {
+        self.userInitiatedClose = true
+        try await self.session.channel.close()
     }
 }

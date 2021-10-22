@@ -46,9 +46,9 @@ final class SSHClientSession {
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator
-    ) -> EventLoopFuture<SSHClientSession> {
+    ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: channel.eventLoop)
-        return channel.pipeline.addHandlers(
+        return try await channel.pipeline.addHandlers(
             NIOSSHHandler(
                 role: .client(
                     .init(
@@ -66,7 +66,7 @@ final class SSHClientSession {
             channel.pipeline.handler(type: NIOSSHHandler.self).map { sshHandler in
                 SSHClientSession(channel: channel, sshHandler: sshHandler)
             }
-        }
+        }.get()
     }
     
     public static func connect(
@@ -75,7 +75,7 @@ final class SSHClientSession {
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-    ) -> EventLoopFuture<SSHClientSession> {
+    ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
         let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
             channel.pipeline.addHandlers([
@@ -96,13 +96,13 @@ final class SSHClientSession {
         .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
         .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
         
-        return bootstrap.connect(host: host, port: port).flatMap { channel in
+        return try await bootstrap.connect(host: host, port: port).flatMap { channel in
             return handshakeHandler.authenticated.flatMap {
                 channel.pipeline.handler(type: NIOSSHHandler.self)
             }.map { sshHandler in
                 SSHClientSession(channel: channel, sshHandler: sshHandler)
             }
-        }
+        }.get()
     }
 }
 

@@ -47,22 +47,24 @@ public final class SFTPClient {
         return id
     }
     
-    func sendRequest(_ request: SFTPRequest) -> EventLoopFuture<SFTPResponse> {
-        let requestId = request.requestId
-        let promise = channel.eventLoop.makePromise(of: SFTPResponse.self)
-        
-        responses.responses[requestId] = promise
-        return channel.writeAndFlush(request.makeMessage()).flatMap {
-            promise.futureResult
-        }
+    func sendRequest(_ request: SFTPRequest) async throws -> SFTPResponse {
+        try await channel.eventLoop.flatSubmit {
+            let requestId = request.requestId
+            let promise = self.channel.eventLoop.makePromise(of: SFTPResponse.self)
+            
+            self.responses.responses[requestId] = promise
+            return self.channel.writeAndFlush(request.makeMessage()).flatMap {
+                promise.futureResult
+            }
+        }.get()
     }
     
     func readFile(
         handle: ByteBuffer,
         offset: UInt64,
         length: UInt32
-    ) -> EventLoopFuture<ByteBuffer> {
-        return sendRequest(
+    ) async throws -> ByteBuffer {
+        let response = try await sendRequest(
             .read(
                 .init(
                     requestId: nextRequestId(),
@@ -71,21 +73,21 @@ public final class SFTPClient {
                     length: length
                 )
             )
-        ).flatMapThrowing { response in
-            guard case .data(let data) = response else {
-                throw SFTPError.invalidResponse
-            }
-            
-            return data.data
+        )
+        
+        guard case .data(let data) = response else {
+            throw SFTPError.invalidResponse
         }
+        
+        return data.data
     }
     
-    func writeFile(
+    func writeFileChunk(
         handle: ByteBuffer,
         data: ByteBuffer,
         offset: UInt64
-    ) -> EventLoopFuture<Void> {
-        return sendRequest(
+    ) async throws {
+        _ = try await sendRequest(
             .write(
                 .init(
                     requestId: nextRequestId(),
@@ -94,15 +96,15 @@ public final class SFTPClient {
                     data: data
                 )
             )
-        ).map { _ in }
+        )
     }
     
     public func openFile(
         filePath: String,
         flags: SFTPOpenFileFlags,
         attributes: SFTPFileAttributes = .none
-    ) -> EventLoopFuture<SFTPFile> {
-        return sendRequest(
+    ) async throws -> SFTPFile {
+        let response = try await sendRequest(
             .openFile(
                 .init(
                     requestId: nextRequestId(),
@@ -111,19 +113,19 @@ public final class SFTPClient {
                     attributes: attributes
                 )
             )
-        ).flatMapThrowing { response in
-            guard case .handle(let handle) = response else {
-                throw SFTPError.invalidResponse
-            }
-            
-            return SFTPFile(handle: handle.handle, client: self)
+        )
+        
+        guard case .handle(let handle) = response else {
+            throw SFTPError.invalidResponse
         }
+        
+        return SFTPFile(handle: handle.handle, client: self)
     }
 }
 
 extension SSHClient {
-    public func openSFTP() -> EventLoopFuture<SFTPClient> {
-        eventLoop.flatSubmit {
+    public func openSFTP() async throws -> SFTPClient {
+        try await eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
             let createClient = self.eventLoop.makePromise(of: SFTPClient.self)
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
@@ -156,7 +158,7 @@ extension SSHClient {
                     client
                 }
             }
-        }
+        }.get()
     }
 }
 

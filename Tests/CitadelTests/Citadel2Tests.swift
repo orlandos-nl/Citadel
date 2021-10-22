@@ -25,18 +25,18 @@ final class Citadel2Tests: XCTestCase {
         XCTAssertEqual(bigInt, sameBigInt)
     }
     
-    func testTTY() throws {
-        let client = try SSHClient.connect(
+    func testTTY() async throws {
+        let client = try await SSHClient.connect(
             host: "10.211.55.4",
             authenticationMethod: .passwordBased(username: "parallels", password: ""),
             hostKeyValidator: .acceptAnything(),
             reconnect: .never
-        ).wait()
+        )
         
-        let tty = try client.openTTY().wait()
+        let tty = try await client.openTTY()
         
         do {
-            let buffer = try tty.executeCommand("asd").wait()
+            let buffer = try await tty.executeCommand("asd")
             print(buffer.getString(at: 0, length: buffer.readableBytes)!)
         } catch let error as TTYSTDError {
             let buffer = error.message
@@ -75,7 +75,7 @@ final class Citadel2Tests: XCTestCase {
         }
     }
   
-    func testSFTP() throws {
+    func testSFTP() async throws {
 //        let rsa = try String(contentsOf: URL(string: "file:///Users/joannisorlandos/.ssh/id_rsa_group_14")!)
 //        DiffieHellmanGroup14Sha1.ourKey = try Insecure.RSA.PrivateKey(sshRsa: rsa)
         
@@ -88,13 +88,24 @@ final class Citadel2Tests: XCTestCase {
         
         NIOSSHAlgoritms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
-        let ssh = try SSHClient.connect(
+        let ssh = try await SSHClient.connect(
           host: "10.211.55.4",
           authenticationMethod: .passwordBased(username: "parallels", password: "Zeus@1290"),
           hostKeyValidator: .acceptAnything(), // It's easy, but you should put your hostkey signature in here
           reconnect: .never
-        ).wait()
-        let sftp = try ssh.openSFTP().wait()
+        )
+        
+        do {
+            let sftp = try await ssh.openSFTP()
+            let file = try await sftp.openFile(filePath: ".bashrc", flags: .read)
+            var data = try await file.readAll()
+            print(data.readString(length: data.readableBytes)!)
+        } catch let error as SFTPMessage.Status {
+            print(error)
+            XCTFail()
+        } catch {
+            XCTFail()
+        }
     }
 
 //    static var allTests = [
