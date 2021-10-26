@@ -2,25 +2,6 @@ import Foundation
 import NIO
 import NIOSSH
 
-final class TTYResponses {
-    var writabilityFuture: EventLoopFuture<Void>
-    var responses = [EventLoopPromise<ByteBuffer>]()
-    
-    init(writabilityFuture: EventLoopFuture<Void>) {
-        self.writabilityFuture = writabilityFuture
-    }
-    
-    deinit {
-        close()
-    }
-    
-    func close() {
-        for response in responses {
-            response.fail(SFTPError.connectionClosed)
-        }
-    }
-}
-
 public struct TTYSTDError: Error {
     public let message: ByteBuffer
 }
@@ -31,10 +12,17 @@ final class TTYHandler: ChannelDuplexHandler {
     typealias OutboundIn = ByteBuffer
     typealias OutboundOut = SSHChannelData
 
-    let responses: TTYResponses
+    let maxResponseSize: Int
+    var isIgnoringInput = false
+    var response = ByteBuffer()
+    let done: EventLoopPromise<ByteBuffer>
     
-    init(responses: TTYResponses) {
-        self.responses = responses
+    init(
+        maxResponseSize: Int,
+        done: EventLoopPromise<ByteBuffer>
+    ) {
+        self.maxResponseSize = maxResponseSize
+        self.done = done
     }
     
     func handlerAdded(context: ChannelHandlerContext) {
@@ -53,30 +41,31 @@ final class TTYHandler: ChannelDuplexHandler {
     }
 
     func handlerRemoved(context: ChannelHandlerContext) {
-        responses.close()
+        done.succeed(response)
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let data = self.unwrapInboundIn(data)
 
-        guard case .byteBuffer(let bytes) = data.data else {
-            fatalError("Unexpected read type")
-        }
-        
-        guard !responses.responses.isEmpty else {
-            // No responses to fulfill
+        guard case .byteBuffer(var bytes) = data.data, !isIgnoringInput else {
             return
         }
         
-        let response = responses.responses.removeFirst()
-
         switch data.type {
         case .channel:
+            if
+                response.readableBytes + bytes.readableBytes > maxResponseSize
+            {
+                isIgnoringInput = true
+                done.fail(CitadelError.commandOutputTooLarge)
+                return
+            }
+            
             // Channel data is forwarded on, the pipe channel will handle it.
-            response.succeed(bytes)
+            response.writeBuffer(&bytes)
             return
         case .stdErr:
-            response.fail(TTYSTDError(message: bytes))
+            done.fail(TTYSTDError(message: bytes))
         default:
             ()
         }
@@ -88,80 +77,41 @@ final class TTYHandler: ChannelDuplexHandler {
     }
 }
 
-/// The SFTP client does not concern itself with the created SSH subsystem
-///
-/// Per specification, SFTP could be used over other transport layers, too.
-public final class TTY {
-    let sshClient: SSHClient
-    let channel: Channel
-    let responses: TTYResponses
-    
-    private init(sshClient: SSHClient, channel: Channel, responses: TTYResponses) {
-        self.sshClient = sshClient
-        self.channel = channel
-        self.responses = responses
-    }
-    
-    public func executeCommand(_ command: String) async throws -> ByteBuffer {
-        try await channel.eventLoop.flatSubmit {
-            // We need to exec a thing.
-            let execRequest = SSHChannelRequestEvent.ExecRequest(
-                command: command,
-                wantReply: true
-            )
-            
-            let promise = self.channel.eventLoop.makePromise(of: ByteBuffer.self)
-            self.responses.responses.append(promise)
-            
-            let channel = self.channel
-            self.responses.writabilityFuture = self.responses.writabilityFuture.flatMap { [channel] in
-                channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
-                    channel.close(promise: nil)
-                    promise.fail(error)
-                }
-                
-                return promise.futureResult.map { _ in }
-            }
-            
-            return promise.futureResult
-        }.get()
-    }
-    
-    internal static func setupChannelHanders(
-        channel: Channel,
-        sshClient: SSHClient
-    ) -> EventLoopFuture<TTY> {
-        let responses = TTYResponses(writabilityFuture: channel.eventLoop.makeSucceededVoidFuture())
-        
-        return channel.pipeline.addHandlers(
-            TTYHandler(responses: responses),
-            CloseErrorHandler()
-        ).map {
-            let client = TTY(sshClient: sshClient, channel: channel, responses: responses)
-            
-            client.channel.closeFuture.whenComplete { _ in
-                responses.close()
-            }
-            return client
-        }
-    }
-}
-
 extension SSHClient {
-    public func openTTY() async throws -> TTY {
-        try await eventLoop.flatSubmit {
+    public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
+        let promise = eventLoop.makePromise(of: ByteBuffer.self)
+        
+        let channel: Channel = try await eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
-            let createClient = self.eventLoop.makePromise(of: TTY.self)
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                TTY.setupChannelHanders(channel: channel, sshClient: self).map(createClient.succeed)
+                channel.pipeline.addHandlers(
+                    TTYHandler(
+                        maxResponseSize: maxResponseSize,
+                        done: promise
+                    )
+                )
             }
             
             self.eventLoop.scheduleTask(in: .seconds(15)) {
-                createChannel.fail(SFTPError.missingResponse)
-                createClient.fail(SFTPError.missingResponse)
+                createChannel.fail(CitadelError.channelCreationFailed)
             }
             
-            return createClient.futureResult
+            return createChannel.futureResult
+        }.get()
+        
+        // We need to exec a thing.
+        let execRequest = SSHChannelRequestEvent.ExecRequest(
+            command: command,
+            wantReply: true
+        )
+        
+        return try await eventLoop.flatSubmit {
+            channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
+                channel.close(promise: nil)
+                promise.fail(error)
+            }
+            
+            return promise.futureResult
         }.get()
     }
 }

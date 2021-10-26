@@ -14,6 +14,8 @@ enum CitadelError: Error {
     case invalidSignature
     case signingError
     case unsupported
+    case commandOutputTooLarge
+    case channelCreationFailed
 }
 
 public final class AES256CTR: NIOSSHTransportProtection {

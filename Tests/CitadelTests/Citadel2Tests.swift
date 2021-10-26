@@ -33,17 +33,12 @@ final class Citadel2Tests: XCTestCase {
             reconnect: .never
         )
         
-        let tty = try await client.openTTY()
-        
-        do {
-            let buffer = try await tty.executeCommand("asd")
-            print(buffer.getString(at: 0, length: buffer.readableBytes)!)
-        } catch let error as TTYSTDError {
-            let buffer = error.message
-            XCTFail(buffer.getString(at: 0, length: buffer.readableBytes)!)
-        } catch {
-            XCTFail("Error: \(error)")
-        }
+        var buffer = try await client.executeCommand("echo a")
+        print(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        buffer = try await client.executeCommand("echo b")
+        print(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        buffer = try await client.executeCommand("echo c")
+        print(buffer.getString(at: 0, length: buffer.readableBytes)!)
     }
     
     func testMPInt() throws {
