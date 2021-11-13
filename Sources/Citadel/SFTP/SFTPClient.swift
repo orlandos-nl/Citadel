@@ -178,13 +178,18 @@ extension SSHClient {
         try await eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
             let createClient = self.eventLoop.makePromise(of: SFTPClient.self)
+            let timeoutCheck = self.eventLoop.makePromise(of: Void.self)
             
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
                 SFTPClient.setupChannelHanders(channel: channel, logger: logger).map(createClient.succeed)
             }
             
-            self.eventLoop.scheduleTask(in: .seconds(15)) {
+            timeoutCheck.futureResult.whenFailure { _ in
                 logger.warning("SFTP ERROR: subsystem request or initialize message received no reply after 15 seconds")
+            }
+            
+            self.eventLoop.scheduleTask(in: .seconds(15)) {
+                timeoutCheck.fail(SFTPError.missingResponse)
                 createChannel.fail(SFTPError.missingResponse)
                 createClient.fail(SFTPError.missingResponse)
             }
@@ -206,6 +211,8 @@ extension SSHClient {
                 logger.debug("SFTP subsystem request completed")
                 return createClient.futureResult
             }.flatMap { (client: SFTPClient) in
+                timeoutCheck.succeed(())
+                
                 let initializeMessage = SFTPMessage.initialize(.init(version: .v3))
                 
                 logger.debug("SFTP start with version \(SFTPProtocolVersion.v3)")
