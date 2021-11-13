@@ -94,14 +94,18 @@ public class SFTPFile {
     public func write(_ data: ByteBuffer, at offset: UInt64 = 0) async throws -> Void {
         guard self.isActive else { throw SFTPError.fileHandleInvalid }
         
-        let outgoingByteCount = data.readableBytes // read this here, the reader index will be moved by the request
+        var data = data
+        let sliceLength = 32_000 // https://github.com/apple/swift-nio-ssh/issues/99
+        
+        while data.readableBytes > 0, let slice = data.readSlice(length: Swift.min(sliceLength, data.readableBytes)) {
+            _ = try await self.client.sendRequest(.write(.init(
+                requestId: self.client.allocateRequestId(),
+                handle: self.handle, offset: offset + UInt64(data.readerIndex) - UInt64(slice.readableBytes), data: slice
+            )))
+            self.logger.debug("SFTP wrote \(slice.readableBytes) @ \(Int(offset) + data.readerIndex - slice.readableBytes) to file \(self.handle.sftpHandleDebugDescription)")
+        }
 
-        _ = try await self.client.sendRequest(.write(.init(
-            requestId: self.client.allocateRequestId(),
-            handle: self.handle, offset: offset, data: data
-        )))
-
-        self.logger.debug("SFTP wrote \(outgoingByteCount) bytes to file \(self.handle.sftpHandleDebugDescription) at \(offset)")
+        self.logger.debug("SFTP finished writing \(data.readerIndex) bytes @ \(offset) to file \(self.handle.sftpHandleDebugDescription)")
     }
 
     /// Close the file. No further operations may take place on the file after it is closed. A file _must_ be closed
