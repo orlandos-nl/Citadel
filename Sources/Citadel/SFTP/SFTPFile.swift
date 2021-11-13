@@ -1,6 +1,5 @@
 import NIO
 import Logging
-import os
 
 /// A "handle" for accessing a file that has been successfully opened on an SFTP server. File handles support
 /// reading (if opened with read access) and writing/appending (if opened with write/append access).
