@@ -121,7 +121,7 @@ public enum SFTPMessage {
         public let version: SFTPProtocolVersion
         public let extensionData: [(String, String)]
         
-        public var debugDescription: String { "(\(self.version), extensions: [\(extensionData.map(\.0).joined(separator: ", "))]" }
+        public var debugDescription: String { "(\(self.version), extensions: [\(extensionData.map(\.0).joined(separator: ", "))])" }
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
