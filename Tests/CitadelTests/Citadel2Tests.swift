@@ -2,10 +2,15 @@ import Crypto
 import BigInt
 import NIO
 import XCTest
+import Logging
 @testable import Citadel
 import NIOSSH
 
 final class Citadel2Tests: XCTestCase {
+    override class func setUp() {
+        XCTAssert(isLoggingConfigured)
+    }
+    
     func testBigIntSerialization() {
         var buffer = ByteBuffer()
         var bigInt = BigUInt.randomInteger(lessThan: 100_000_000_000)
@@ -91,8 +96,13 @@ final class Citadel2Tests: XCTestCase {
         ).wait()
         let sftp = try ssh.openSFTP().wait()
     }
-
-//    static var allTests = [
-//        ("testBigIntSerialization", testBigIntSerialization),
-//    ]
 }
+
+let isLoggingConfigured: Bool = {
+    LoggingSystem.bootstrap { label in
+        var handler = StreamLogHandler.standardOutput(label: label)
+        handler.logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"].flatMap { Logger.Level(rawValue: $0) } ?? .debug
+        return handler
+    }
+    return true
+}()
