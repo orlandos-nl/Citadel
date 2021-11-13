@@ -25,25 +25,20 @@ final class Citadel2Tests: XCTestCase {
         XCTAssertEqual(bigInt, sameBigInt)
     }
     
-    func testTTY() throws {
-        let client = try SSHClient.connect(
-            host: "10.211.55.4",
-            authenticationMethod: .passwordBased(username: "parallels", password: ""),
+    func testTTY() async throws {
+        let client = try await SSHClient.connect(
+            host: "localhost",
+            authenticationMethod: .passwordBased(username: "sftp_test", password: ""),
             hostKeyValidator: .acceptAnything(),
             reconnect: .never
-        ).wait()
+        )
         
-        let tty = try client.openTTY().wait()
-        
-        do {
-            let buffer = try tty.executeCommand("asd").wait()
-            print(buffer.getString(at: 0, length: buffer.readableBytes)!)
-        } catch let error as TTYSTDError {
-            let buffer = error.message
-            XCTFail(buffer.getString(at: 0, length: buffer.readableBytes)!)
-        } catch {
-            XCTFail("Error: \(error)")
-        }
+        var buffer = try await client.executeCommand("echo a")
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "a\n")
+        buffer = try await client.executeCommand("echo b")
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "b\n")
+        buffer = try await client.executeCommand("echo c")
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "c\n")
     }
     
     func testMPInt() throws {
