@@ -75,7 +75,7 @@ final class Citadel2Tests: XCTestCase {
         }
     }
   
-    func testSFTP() throws {
+    func testSFTP() async throws {
 //        let rsa = try String(contentsOf: URL(string: "file:///Users/joannisorlandos/.ssh/id_rsa_group_14")!)
 //        DiffieHellmanGroup14Sha1.ourKey = try Insecure.RSA.PrivateKey(sshRsa: rsa)
         
@@ -88,13 +88,21 @@ final class Citadel2Tests: XCTestCase {
         
         NIOSSHAlgoritms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
-        let ssh = try SSHClient.connect(
-          host: "10.211.55.4",
-          authenticationMethod: .passwordBased(username: "parallels", password: "Zeus@1290"),
+        let ssh = try await SSHClient.connect(
+          host: "localhost",
+          authenticationMethod: .passwordBased(username: "sftp_test", password: ""),
           hostKeyValidator: .acceptAnything(), // It's easy, but you should put your hostkey signature in here
           reconnect: .never
-        ).wait()
-        let sftp = try ssh.openSFTP().wait()
+        )
+        let sftp = try await ssh.openSFTP(logger: .init(label: "sftp.test"))
+        let tmpfile = "/tmp/sftp_test_\(UUID().uuidString)"
+        try await sftp.withFile(filePath: tmpfile, flags: [.create, .write, .truncate]) {
+            try await $0.write(.init(data: "hello world".data(using: .utf8)!))
+        }
+        try await sftp.withFile(filePath: tmpfile, flags: [.read]) {
+            let data = try await $0.readAll()
+            XCTAssertEqual(String(decoding: data.readableBytesView, as: UTF8.self), "hello world")
+        }
     }
 }
 
