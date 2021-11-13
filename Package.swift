@@ -33,6 +33,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CitadelTests",
-            dependencies: ["Citadel"]),
+            dependencies: ["Citadel"]
+        ),
     ]
 )
