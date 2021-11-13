@@ -146,16 +146,16 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
             return array.map { String(format: "%02hhx", $0) }.joined()
         }
         
-        var offset = initialExchangeBytes.writerIndex
+        //var offset = initialExchangeBytes.writerIndex
         initialExchangeBytes.writeCompositeSSHString {
             serverHostKey.write(to: &$0)
         }
         
-        offset = initialExchangeBytes.writerIndex
+        //offset = initialExchangeBytes.writerIndex
         switch self.ourRole {
         case .client:
             initialExchangeBytes.writeMPBignum(ourKey._publicKey.modulus)
-            offset = initialExchangeBytes.writerIndex
+            //offset = initialExchangeBytes.writerIndex
             initialExchangeBytes.writeMPBignum(serverPublicKey)
         case .server:
             initialExchangeBytes.writeMPBignum(serverPublicKey)

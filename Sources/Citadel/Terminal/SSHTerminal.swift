@@ -102,26 +102,29 @@ public final class TTY {
         self.responses = responses
     }
     
-    public func executeCommand(_ command: String) -> EventLoopFuture<ByteBuffer> {
-        // We need to exec a thing.
-        let execRequest = SSHChannelRequestEvent.ExecRequest(
-            command: command,
-            wantReply: true
-        )
-        
-        let promise = channel.eventLoop.makePromise(of: ByteBuffer.self)
-        responses.responses.append(promise)
-        
-        responses.writabilityFuture = responses.writabilityFuture.flatMap { [channel] in
-            channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
-                channel.close(promise: nil)
-                promise.fail(error)
+    public func executeCommand(_ command: String) async throws -> ByteBuffer {
+        try await channel.eventLoop.flatSubmit {
+            // We need to exec a thing.
+            let execRequest = SSHChannelRequestEvent.ExecRequest(
+                command: command,
+                wantReply: true
+            )
+            
+            let promise = self.channel.eventLoop.makePromise(of: ByteBuffer.self)
+            self.responses.responses.append(promise)
+            
+            let channel = self.channel
+            self.responses.writabilityFuture = self.responses.writabilityFuture.flatMap { [channel] in
+                channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
+                    channel.close(promise: nil)
+                    promise.fail(error)
+                }
+                
+                return promise.futureResult.map { _ in }
             }
             
-            return promise.futureResult.map { _ in }
-        }
-        
-        return promise.futureResult
+            return promise.futureResult
+        }.get()
     }
     
     internal static func setupChannelHanders(
@@ -145,8 +148,8 @@ public final class TTY {
 }
 
 extension SSHClient {
-    public func openTTY() -> EventLoopFuture<TTY> {
-        eventLoop.flatSubmit {
+    public func openTTY() async throws -> TTY {
+        try await eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
             let createClient = self.eventLoop.makePromise(of: TTY.self)
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
@@ -159,6 +162,6 @@ extension SSHClient {
             }
             
             return createClient.futureResult
-        }
+        }.get()
     }
 }
