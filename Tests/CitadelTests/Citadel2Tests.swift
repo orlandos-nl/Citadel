@@ -2,10 +2,15 @@ import Crypto
 import BigInt
 import NIO
 import XCTest
+import Logging
 @testable import Citadel
 import NIOSSH
 
 final class Citadel2Tests: XCTestCase {
+    override class func setUp() {
+        XCTAssert(isLoggingConfigured)
+    }
+    
     func testBigIntSerialization() {
         var buffer = ByteBuffer()
         var bigInt = BigUInt.randomInteger(lessThan: 100_000_000_000)
@@ -25,25 +30,20 @@ final class Citadel2Tests: XCTestCase {
         XCTAssertEqual(bigInt, sameBigInt)
     }
     
-    func testTTY() throws {
-        let client = try SSHClient.connect(
-            host: "10.211.55.4",
-            authenticationMethod: .passwordBased(username: "parallels", password: ""),
+    func testTTY() async throws {
+        let client = try await SSHClient.connect(
+            host: "localhost",
+            authenticationMethod: .passwordBased(username: "sftp_test", password: ""),
             hostKeyValidator: .acceptAnything(),
             reconnect: .never
-        ).wait()
+        )
         
-        let tty = try client.openTTY().wait()
-        
-        do {
-            let buffer = try tty.executeCommand("asd").wait()
-            print(buffer.getString(at: 0, length: buffer.readableBytes)!)
-        } catch let error as TTYSTDError {
-            let buffer = error.message
-            XCTFail(buffer.getString(at: 0, length: buffer.readableBytes)!)
-        } catch {
-            XCTFail("Error: \(error)")
-        }
+        var buffer = try await client.executeCommand("echo a")
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "a\n")
+        buffer = try await client.executeCommand("echo b")
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "b\n")
+        buffer = try await client.executeCommand("echo c")
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "c\n")
     }
     
     func testMPInt() throws {
@@ -75,7 +75,7 @@ final class Citadel2Tests: XCTestCase {
         }
     }
   
-    func testSFTP() throws {
+    func testSFTP() async throws {
 //        let rsa = try String(contentsOf: URL(string: "file:///Users/joannisorlandos/.ssh/id_rsa_group_14")!)
 //        DiffieHellmanGroup14Sha1.ourKey = try Insecure.RSA.PrivateKey(sshRsa: rsa)
         
@@ -88,16 +88,29 @@ final class Citadel2Tests: XCTestCase {
         
         NIOSSHAlgoritms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
-        let ssh = try SSHClient.connect(
-          host: "10.211.55.4",
-          authenticationMethod: .passwordBased(username: "parallels", password: "Zeus@1290"),
+        let ssh = try await SSHClient.connect(
+          host: "localhost",
+          authenticationMethod: .passwordBased(username: "sftp_test", password: ""),
           hostKeyValidator: .acceptAnything(), // It's easy, but you should put your hostkey signature in here
           reconnect: .never
-        ).wait()
-        let sftp = try ssh.openSFTP().wait()
+        )
+        let sftp = try await ssh.openSFTP(logger: .init(label: "sftp.test"))
+        let tmpfile = "/tmp/sftp_test_\(UUID().uuidString)"
+        try await sftp.withFile(filePath: tmpfile, flags: [.create, .write, .truncate]) {
+            try await $0.write(.init(data: "hello world".data(using: .utf8)!))
+        }
+        try await sftp.withFile(filePath: tmpfile, flags: [.read]) {
+            let data = try await $0.readAll()
+            XCTAssertEqual(String(decoding: data.readableBytesView, as: UTF8.self), "hello world")
+        }
     }
-
-//    static var allTests = [
-//        ("testBigIntSerialization", testBigIntSerialization),
-//    ]
 }
+
+let isLoggingConfigured: Bool = {
+    LoggingSystem.bootstrap { label in
+        var handler = StreamLogHandler.standardOutput(label: label)
+        handler.logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"].flatMap { Logger.Level(rawValue: $0) } ?? .debug
+        return handler
+    }
+    return true
+}()

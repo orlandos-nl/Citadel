@@ -1,146 +1,7 @@
 import NIO
 import Foundation
 
-// pflags
-public struct SFTPOpenFileFlags: OptionSet {
-    public var rawValue: UInt32
-    
-    public init(rawValue: UInt32) {
-        self.rawValue = rawValue
-    }
-    
-    /// SSH_FXF_READ
-    ///
-    /// Open the file for reading.
-    public static let read = SFTPOpenFileFlags(rawValue: 0x00000001)
-    
-    /// SSH_FXF_WRITE
-    ///
-    /// Open the file for writing.  If both this and SSH_FXF_READ are
-    /// specified, the file is opened for both reading and writing.
-    public static let write = SFTPOpenFileFlags(rawValue: 0x00000002)
-    
-    /// SSH_FXF_APPEND
-    ///
-    /// Force all writes to append data at the end of the file.
-    public static let append = SFTPOpenFileFlags(rawValue: 0x00000004)
-    
-    /// SSH_FXF_CREAT
-    ///
-    /// If this flag is specified, then a new file will be created if one
-    /// does not already exist (if O_TRUNC is specified, the new file will
-    /// be truncated to zero length if it previously exists).
-    public static let create = SFTPOpenFileFlags(rawValue: 0x00000008)
-    
-    /// SSH_FXF_TRUNC
-    ///
-    /// Forces an existing file with the same name to be truncated to zero
-    /// length when creating a file by specifying SSH_FXF_CREAT.
-    /// SSH_FXF_CREAT MUST also be specified if this flag is used.
-    public static let truncate = SFTPOpenFileFlags(rawValue: 0x00000010)
-    
-    /// SSH_FXF_EXCL
-    ///
-    /// Causes the request to fail if the named file already exists.
-    /// SSH_FXF_CREAT MUST also be specified if this flag is used.
-    public static let forceCreate = SFTPOpenFileFlags(rawValue: 0x00000020)
-}
-
-public struct SFTPFileAttributes {
-    public struct Flags: OptionSet {
-        public var rawValue: UInt32
-        
-        public init(rawValue: UInt32) {
-            self.rawValue = rawValue
-        }
-        
-        public static let size = Flags(rawValue: 0x00000001)
-        public static let uidgid = Flags(rawValue: 0x00000002)
-        public static let permissions = Flags(rawValue: 0x00000004)
-        public static let acmodtime = Flags(rawValue: 0x00000008)
-        public static let extended = Flags(rawValue: 0x80000000)
-    }
-    
-    public struct UserGroupId {
-        public let userId: UInt32
-        public let groupId: UInt32
-        
-        public init(
-            userId: UInt32,
-            groupId: UInt32
-        ) {
-            self.userId = userId
-            self.groupId = groupId
-        }
-    }
-    
-    public struct AccessModificationTime {
-        // Both written as UInt32 seconds since jan 1 1970 as UTC
-        public let accessTime: Date
-        public let modificationTime: Date
-        
-        public init(
-            accessTime: Date,
-            modificationTime: Date
-        ) {
-            self.accessTime = accessTime
-            self.modificationTime = modificationTime
-        }
-    }
-    
-    public var flags: Flags {
-        var flags: Flags = []
-        
-        if size != nil {
-            flags.insert(.size)
-        }
-        
-        if permissions != nil {
-            flags.insert(.permissions)
-        }
-        
-        if accessModificationTime != nil {
-            flags.insert(.acmodtime)
-        }
-        
-        if !extended.isEmpty {
-            flags.insert(.extended)
-        }
-        
-        return flags
-    }
-    
-    public var size: UInt64?
-    public var uidgid: UserGroupId?
-    
-    // TODO: Permissions as OptionSet
-    public var permissions: UInt32?
-    public var accessModificationTime: AccessModificationTime?
-    public var extended = [(String, String)]()
-    
-    public init() {}
-    // TODO: Extended
-//    let extended_count: UInt32?
-    
-    public static let none = SFTPFileAttributes()
-}
-
-public enum SFTPMessageType: UInt8 {
-    case initialize = 1
-    case version = 2
-    case openFile = 3
-    case closeFile = 4
-    case read = 5
-    case write = 6
-    
-    case status = 101
-    case handle = 102
-    case data = 103
-    case name = 104
-    case attributes = 105
-}
-
-enum SFTPRequest {
+enum SFTPRequest: CustomDebugStringConvertible {
     case openFile(SFTPMessage.OpenFile)
     case closeFile(SFTPMessage.CloseFile)
     case read(SFTPMessage.ReadFile)
@@ -171,6 +32,15 @@ enum SFTPRequest {
             return .read(message)
         case .write(let message):
             return .write(message)
+        }
+    }
+    
+    var debugDescription: String {
+        switch self {
+        case .openFile(let message): return message.debugDescription
+        case .closeFile(let message): return message.debugDescription
+        case .read(let message): return message.debugDescription
+        case .write(let message): return message.debugDescription
         }
     }
 }
@@ -216,23 +86,46 @@ enum SFTPResponse {
             return nil
         }
     }
+    
+    var debugDescription: String {
+        switch self {
+        case .handle(let message): return message.debugDescription
+        case .status(let message): return message.debugDescription
+        case .data(let message): return message.debugDescription
+        }
+    }
+}
+
+public protocol SFTPMessageContent: CustomDebugStringConvertible {
+    static var id: SFTPMessageType { get }
+}
+
+extension SFTPMessageContent {
+    fileprivate var id: SFTPMessageType { Self.id }
+    fileprivate var debugVariantWithoutLargeData: Self { self }
 }
 
 public enum SFTPMessage {
-    public struct Initialize {
+    public struct Initialize: SFTPMessageContent {
         public static let id = SFTPMessageType.initialize
         
-        public let version: UInt32
-    }
-    
-    public struct Version {
-        static let id = SFTPMessageType.version
+        public let version: SFTPProtocolVersion
         
-        public let version: UInt32
-        public let extensionData: [(String, String)]
+        public var debugDescription: String { "(version: \(version))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct OpenFile {
+    public struct Version: SFTPMessageContent {
+        public static let id = SFTPMessageType.version
+        
+        public let version: SFTPProtocolVersion
+        public let extensionData: [(String, String)]
+        
+        public var debugDescription: String { "(\(self.version), extensions: [\(extensionData.map(\.0).joined(separator: ", "))])" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct OpenFile: SFTPMessageContent {
         public static let id = SFTPMessageType.openFile
         
         public var requestId: UInt32
@@ -242,57 +135,87 @@ public enum SFTPMessage {
         
         public let pFlags: SFTPOpenFileFlags
         public let attributes: SFTPFileAttributes
+        
+        public var debugDescription: String { "{\(self.requestId)}('\(self.filePath)', flags: \(self.pFlags.debugDescription), attrs: \(self.attributes.debugDescription))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct CloseFile {
+    public struct CloseFile: SFTPMessageContent {
         public static let id = SFTPMessageType.closeFile
         
         public var requestId: UInt32
         public var handle: ByteBuffer
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.handle.sftpHandleDebugDescription))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct ReadFile {
+    public struct ReadFile: SFTPMessageContent {
         public static let id = SFTPMessageType.read
         
         public var requestId: UInt32
         public var handle: ByteBuffer
         public var offset: UInt64
         public var length: UInt32
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.handle.sftpHandleDebugDescription), \(self.length) bytes from \(self.offset))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct WriteFile {
+    public struct WriteFile: SFTPMessageContent {
         public static let id = SFTPMessageType.write
         
         public var requestId: UInt32
         public var handle: ByteBuffer
         public var offset: UInt64
         public var data: ByteBuffer
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.handle.sftpHandleDebugDescription), <\(data.readableBytes) bytes> to \(self.offset))" }
+        fileprivate var debugVariantWithoutLargeData: Self { .init(requestId: self.requestId, handle: self.handle, offset: self.offset, data: .init()) }
     }
     
-    public struct Status: Error {
+    public struct Status: Error, SFTPMessageContent {
         public static let id = SFTPMessageType.status
         
         public let requestId: UInt32
-        public let errorCode: UInt32
+        public let errorCode: SFTPStatusCode
         public let message: String
         public let languageTag: String
+        
+        public var localizedDescription: String { "\(message)" }
+        public var debugDescription: String { "{\(self.requestId)}(code: \(self.errorCode.debugDescription), \(self.languageTag)#'\(self.message)')" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Handle {
+    public struct Handle: SFTPMessageContent {
         public static let id = SFTPMessageType.handle
         
         public let requestId: UInt32
         public var handle: ByteBuffer
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.handle.sftpHandleDebugDescription))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct FileData {
+    public struct FileData: SFTPMessageContent {
         public static let id = SFTPMessageType.data
         
         public let requestId: UInt32
         public var data: ByteBuffer
+        
+        public var debugDescription: String { "{\(self.requestId)}(<\(data.readableBytes) bytes>)" }
+        fileprivate var debugVariantWithoutLargeData: Self { .init(requestId: self.requestId, data: .init()) }
     }
     
+    /// Client.
+    ///
+    /// Starts SFTP session and indicates client version.
+    /// Response is `version`.
     case initialize(Initialize)
+    
+    /// Server.
+    ///
+    /// Indicates server version and supported extensions.
     case version(Version)
     
     /// Client.
@@ -306,8 +229,14 @@ public enum SFTPMessage {
     /// The only valid response is `status`
     case closeFile(CloseFile)
     
+    /// Client.
+    ///
+    /// Response is `data` on success or `status` on failure.
     case read(ReadFile)
     
+    /// Client.
+    ///
+    /// Response is `status`.
     case write(WriteFile)
     
     /// Server.
@@ -320,5 +249,52 @@ public enum SFTPMessage {
     /// Successfully closed a file, or failed to open a file
     case status(Status)
     
+    /// Server.
+    ///
+    /// Data read from file.
     case data(FileData)
+    
+    public var messageType: SFTPMessageType {
+        switch self {
+        case .initialize(let message as SFTPMessageContent), .version(let message as SFTPMessageContent),
+             .openFile(let message as SFTPMessageContent), .closeFile(let message as SFTPMessageContent),
+             .read(let message as SFTPMessageContent), .write(let message as SFTPMessageContent),
+             .handle(let message as SFTPMessageContent), .status(let message as SFTPMessageContent),
+             .data(let message as SFTPMessageContent):
+            return message.id
+        }
+    }
+    
+    public var debugDescription: String {
+        switch self {
+        case .initialize(let message as SFTPMessageContent), .version(let message as SFTPMessageContent),
+             .openFile(let message as SFTPMessageContent), .closeFile(let message as SFTPMessageContent),
+             .read(let message as SFTPMessageContent), .write(let message as SFTPMessageContent),
+             .handle(let message as SFTPMessageContent), .status(let message as SFTPMessageContent),
+             .data(let message as SFTPMessageContent):
+            return "\(message.id)\(message.debugDescription)"
+        }
+    }
+    
+    private var debugVariantWithoutLargeData: SFTPMessage {
+        switch self {
+        case .initialize(let message): return Self.initialize(message.debugVariantWithoutLargeData)
+        case .version(let message): return Self.version(message.debugVariantWithoutLargeData)
+        case .openFile(let message): return Self.openFile(message.debugVariantWithoutLargeData)
+        case .closeFile(let message): return Self.closeFile(message.debugVariantWithoutLargeData)
+        case .read(let message): return Self.read(message.debugVariantWithoutLargeData)
+        case .write(let message): return Self.write(message.debugVariantWithoutLargeData)
+        case .handle(let message): return Self.handle(message.debugVariantWithoutLargeData)
+        case .status(let message): return Self.status(message.debugVariantWithoutLargeData)
+        case .data(let message): return Self.data(message.debugVariantWithoutLargeData)
+        }
+    }
+    
+    /// Returns a stringified representation of the packet's serialized data bytes, omitting large data buffers
+    /// such as outgoing file data.
+    internal var debugRawBytesRepresentation: String {
+        var buffer = ByteBufferAllocator().buffer(capacity: 256)
+        try! SFTPMessageSerializer().encode(data: self.debugVariantWithoutLargeData, out: &buffer)
+        return buffer.readableBytesView.map { "0\(String($0, radix: 16))".suffix(2) }.joined(separator: " ")
+    }
 }

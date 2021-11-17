@@ -10,10 +10,10 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
         switch data {
         case .initialize(let initialize):
             out.writeInteger(SFTPMessage.Initialize.id.rawValue)
-            out.writeInteger(initialize.version)
+            out.writeInteger(initialize.version.rawValue)
         case .version(let version):
             out.writeInteger(SFTPMessage.Version.id.rawValue)
-            out.writeInteger(version.version)
+            out.writeInteger(version.version.rawValue)
             
             for (key, value) in version.extensionData {
                 out.writeSSHString(key)
@@ -49,7 +49,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
         case .status(let status):
             out.writeInteger(SFTPMessage.Status.id.rawValue)
             out.writeInteger(status.requestId)
-            out.writeInteger(status.errorCode)
+            out.writeInteger(status.errorCode.rawValue)
             out.writeSSHString(status.message)
             out.writeSSHString(status.languageTag)
         case .data(var data):
