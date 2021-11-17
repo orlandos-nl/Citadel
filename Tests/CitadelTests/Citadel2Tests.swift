@@ -84,7 +84,7 @@ final class Citadel2Tests: XCTestCase {
             signature: Insecure.RSA.Signature.self
         )
         
-        NIOSSHAlgoritms.register(transportProtectionScheme: AES256CTR.self)
+        NIOSSHAlgoritms.register(transportProtectionScheme: AES128CTR.self)
         
         NIOSSHAlgoritms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
