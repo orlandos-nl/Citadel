@@ -28,6 +28,11 @@ public enum SFTPProtocolVersion: RawRepresentable, Hashable, Comparable {
         case let n: self = .unsupported(n)
         }
     }
+
+    /// Non-failing overload.
+    public init(_ rawValue: UInt32) {
+        self.init(rawValue: rawValue)!
+    }
 }
 
 public enum SFTPMessageType: UInt8 {
@@ -136,6 +141,10 @@ public enum SFTPStatusCode: RawRepresentable, Hashable, CustomDebugStringConvert
         }
     }
     
+    public init(_ rawValue: UInt32) {
+        self.init(rawValue: rawValue)!
+    }
+
     public var debugDescription: String {
         switch self {
         case .ok: return "SSH_FX_OK"

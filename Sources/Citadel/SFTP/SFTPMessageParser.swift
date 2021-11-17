@@ -27,7 +27,7 @@ struct SFTPMessageParser: ByteToMessageDecoder {
                 throw SFTPError.invalidPayload(type: type)
             }
             
-            message = .initialize(.init(version: .init(rawValue: version)!)) // SFTPProtocolVersion.init(rawValue:) never returns nil
+            message = .initialize(.init(version: .init(version)))
         case .version:
             guard let version = payload.readInteger(as: UInt32.self) else {
                 throw SFTPError.invalidPayload(type: type)
@@ -48,7 +48,7 @@ struct SFTPMessageParser: ByteToMessageDecoder {
             
             message = .version(
                 .init(
-                    version: .init(rawValue: version)!, // SFTPProtocolVersion.init(rawValue:) never returns nil
+                    version: .init(version),
                     extensionData: extensionData
                 )
             )
@@ -133,7 +133,7 @@ struct SFTPMessageParser: ByteToMessageDecoder {
             message = .status(
                 .init(
                     requestId: requestId,
-                    errorCode: .init(rawValue: errorCode)!, // SFTPStatusCode.init(rawValue:) never returns nil
+                    errorCode: .init(errorCode),
                     message: errorMessage,
                     languageTag: languageTag
                 )
