@@ -6,6 +6,7 @@ It features the following helpers:
 
 - [x] TCP-IP forwarding child channels
 - [x] Basic SFTP Client
+- [x] TTY support
 
 ## Usage
 
