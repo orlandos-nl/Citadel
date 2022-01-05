@@ -9,6 +9,8 @@ It features the following helpers:
 
 ## Usage
 
+If you have any questions, [join the Discord](https://discord.gg/RBrYM8C6Pa)
+
 ### SSH Proxy for MongoKitten
 
 ```swift
