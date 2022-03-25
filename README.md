@@ -8,6 +8,8 @@ It features the following helpers:
 - [x] Basic SFTP Client
 - [x] TTY support
 
+[Read the docs](https://orlandos.nl/docs/citadel)
+
 ## Usage
 
 If you have any questions, [join the Discord](https://discord.gg/RBrYM8C6Pa)
