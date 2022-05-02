@@ -40,8 +40,8 @@ extension SSHClient {
         initialize: @escaping (Channel) -> EventLoopFuture<Void>
     ) async throws -> Channel {
         return try await eventLoop.flatSubmit {
-            let createdChannel = eventLoop.makePromise(of: Channel.self)
-            session.sshHandler.createChannel(
+            let createdChannel = self.eventLoop.makePromise(of: Channel.self)
+            self.session.sshHandler.createChannel(
                 createdChannel,
                 channelType: .directTCPIP(settings)
             ) { channel, type in
