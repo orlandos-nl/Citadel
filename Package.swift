@@ -28,6 +28,8 @@ let package = Package(
             name: "Citadel",
             dependencies: [
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto"),
                 .product(name: "BigInt", package: "BigInt"),
             ]
         ),
