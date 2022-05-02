@@ -18,7 +18,7 @@ enum CitadelError: Error {
     case channelCreationFailed
 }
 
-public final class AES256CTR: NIOSSHTransportProtection {
+public final class AES128CTR: NIOSSHTransportProtection {
     public static let macName: String? = "hmac-sha1"
     public static let cipherBlockSize = 16
     public static let cipherName = "aes128-ctr"
@@ -104,7 +104,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
         
         guard CCryptoBoringSSL_EVP_CipherInit(
             encryptionContext,
-            CCryptoBoringSSL_EVP_aes_256_ctr(),
+            CCryptoBoringSSL_EVP_aes_128_ctr(),
             outboundEncryptionKey,
             newKeys.initialOutboundIV,
             1
@@ -114,7 +114,7 @@ public final class AES256CTR: NIOSSHTransportProtection {
         
         guard CCryptoBoringSSL_EVP_CipherInit(
             decryptionContext,
-            CCryptoBoringSSL_EVP_aes_256_ctr(),
+            CCryptoBoringSSL_EVP_aes_128_ctr(),
             inboundEncryptionKey,
             newKeys.initialInboundIV,
             0
