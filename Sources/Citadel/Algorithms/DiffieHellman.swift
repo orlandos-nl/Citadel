@@ -90,7 +90,7 @@ public struct DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
                                                      serverHostKey: serverKeyExchangeMessage.hostKey,
                                                      allocator: allocator,
                                                      expectedKeySizes: expectedKeySizes)
-
+        
         // We can now verify signature over the exchange hash.
         guard serverKeyExchangeMessage.hostKey.isValidSignature(serverKeyExchangeMessage.signature, for: kexResult.exchangeHash) else {
             throw CitadelError.invalidSignature
