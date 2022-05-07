@@ -74,14 +74,14 @@ final class Citadel2Tests: XCTestCase {
 //        let rsa = try String(contentsOf: URL(string: "file:///Users/joannisorlandos/.ssh/id_rsa_group_14")!)
 //        DiffieHellmanGroup14Sha1.ourKey = try Insecure.RSA.PrivateKey(sshRsa: rsa)
         
-        NIOSSHAlgoritms.register(
+        NIOSSHAlgorithms.register(
             publicKey: Insecure.RSA.PublicKey.self,
             signature: Insecure.RSA.Signature.self
         )
         
-        NIOSSHAlgoritms.register(transportProtectionScheme: AES256CTR.self)
+        NIOSSHAlgorithms.register(transportProtectionScheme: AES256CTR.self)
         
-        NIOSSHAlgoritms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
+        NIOSSHAlgorithms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
         let ssh = try await SSHClient.connect(
           host: "10.211.55.4",

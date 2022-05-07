@@ -18,8 +18,9 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", .revision("316c8d6282e43df82595e3d0f5d5bc9f10e9f856")),
+        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", .revision("171bb0447d52928b4c49790579c98006e1d4ccd4")),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "2.1.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -28,6 +29,8 @@ let package = Package(
             name: "Citadel",
             dependencies: [
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto"),
                 .product(name: "BigInt", package: "BigInt"),
             ]
         ),
