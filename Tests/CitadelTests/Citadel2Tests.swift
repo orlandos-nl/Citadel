@@ -84,8 +84,7 @@ final class Citadel2Tests: XCTestCase {
             signature: Insecure.RSA.Signature.self
         )
         
-        NIOSSHAlgorithms.register(transportProtectionScheme: AES256CTR.self)
-        
+        NIOSSHAlgorithms.register(transportProtectionScheme: AES128CTR.self)
         NIOSSHAlgorithms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
         let ssh = try await SSHClient.connect(
