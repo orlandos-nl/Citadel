@@ -8,7 +8,7 @@
 import Foundation
 import XCTest
 import Crypto
-@testable import Citadel
+import Citadel
 import _CryptoExtras
 import NIO
 import BigInt
@@ -59,25 +59,44 @@ final class KeyTests: XCTestCase {
         let privateKey = try Insecure.RSA.PrivateKey(sshRsa: key)
         XCTAssertNotNil(privateKey)
         
-        let openSSHPrivateKey = try OpenSSH.PrivateKey<Insecure.RSA>(string: key)
+        let openSSHPrivateKey = try Insecure.RSA.PrivateKey(sshRsa: key)
+        XCTAssertNotNil(openSSHPrivateKey)
+    }
+    
+    func testEncryptedED25519PrivateKey() throws {
+        let key = """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBQRAFCo9
+        /vv0icX60s6O6UAAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIBrez0rdYqROdkIA
+        qvSrLoYFO1KVEidE4wclxivVKMbmAAAAoA9dkA6h2tAtANBP9RzyKvgrw5JKVJLVHfvZRQ
+        8d3ttvy7WOs15y8lL/SdHiCyRukkKOPRd02zqx5g6WSmXZ0dKho/aMMO+58cIxsbCmMePT
+        HaJvuQjIx6DIEoQyq83rQeVngk5rgvgou2jgHy/35C1AHtUysH4DIcltmrU3rvMF8i2GL4
+        Od3cZL5cIOQVsmAZS6t3oL+GVeVOMFCqGFxjc=
+        -----END OPENSSH PRIVATE KEY-----
+        """
+        
+        let privateKey = try ED25519.PrivateKey(sshEd25519: key, decryptionKey: "example".data(using: .utf8)!)
+        XCTAssertNotNil(privateKey)
+        
+        let openSSHPrivateKey = try ED25519.PrivateKey(sshEd25519: key, decryptionKey: "example".data(using: .utf8)!)
         XCTAssertNotNil(openSSHPrivateKey)
     }
     
     func testED25519PrivateKey() throws {
         let key = """
-            -----BEGIN OPENSSH PRIVATE KEY-----
-            b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-            QyNTUxOQAAACAi19yxbgtZH0Y26GZGr2vyVErGFskeOY9HwHLxYbmkAwAAAKAPNV8QDzVf
-            EAAAAAtzc2gtZWQyNTUxOQAAACAi19yxbgtZH0Y26GZGr2vyVErGFskeOY9HwHLxYbmkAw
-            AAAED3UDHB29MB7vQDpb7PGFjEMAYT9FzpnadYWrCPSUma5SLX3LFuC1kfRjboZkava/JU
-            SsYWyR45j0fAcvFhuaQDAAAAHGphYXBASmFhcHMtTWFjQm9vay1Qcm8ubG9jYWwB
-            -----END OPENSSH PRIVATE KEY-----
-            """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+        QyNTUxOQAAACAi19yxbgtZH0Y26GZGr2vyVErGFskeOY9HwHLxYbmkAwAAAKAPNV8QDzVf
+        EAAAAAtzc2gtZWQyNTUxOQAAACAi19yxbgtZH0Y26GZGr2vyVErGFskeOY9HwHLxYbmkAw
+        AAAED3UDHB29MB7vQDpb7PGFjEMAYT9FzpnadYWrCPSUma5SLX3LFuC1kfRjboZkava/JU
+        SsYWyR45j0fAcvFhuaQDAAAAHGphYXBASmFhcHMtTWFjQm9vay1Qcm8ubG9jYWwB
+        -----END OPENSSH PRIVATE KEY-----
+        """
         
         let privateKey = try ED25519.PrivateKey(sshEd25519: key)
         XCTAssertNotNil(privateKey)
         
-        let openSSHPrivateKey = try OpenSSH.PrivateKey<ED25519>(string: key)
+        let openSSHPrivateKey = try ED25519.PrivateKey(sshEd25519: key)
         XCTAssertNotNil(openSSHPrivateKey)
     }
 }

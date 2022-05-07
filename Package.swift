@@ -10,25 +10,23 @@ let package = Package(
         .iOS(.v15)
     ],
     products: [
-        // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(
             name: "Citadel",
             targets: ["Citadel"]
         ),
     ],
     dependencies: [
-        // Dependencies declare other packages that this package depends on.
         .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", branch: "citadel2"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "2.1.0"),
     ],
     targets: [
-        // Targets are the basic building blocks of a package. A target can define a module or a test suite.
-        // Targets can depend on other targets in this package, and on products in packages which this package depends on.
+        .target(name: "CBcrypt"),
         .target(
             name: "Citadel",
             dependencies: [
+                .target(name: "CBcrypt"),
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
