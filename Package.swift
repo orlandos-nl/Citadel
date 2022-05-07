@@ -21,6 +21,7 @@ let package = Package(
         .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", branch: "citadel2"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "2.1.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -29,6 +30,8 @@ let package = Package(
             name: "Citadel",
             dependencies: [
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto"),
                 .product(name: "BigInt", package: "BigInt"),
                 .product(name: "Logging", package: "swift-log"),
             ]
