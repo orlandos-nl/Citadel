@@ -24,7 +24,6 @@ public enum ED25519 {
             return baseKey.isValidSignature(signature.rawRepresentation, for: digest)
         }
 
-        // TODO: duplication
         public func isValidSignature<D>(_ signature: NIOSSHSignatureProtocol, for data: D) -> Bool where D : DataProtocol {
             guard let signature = signature as? Signature else {
                 return false
@@ -49,7 +48,6 @@ public enum ED25519 {
         }
     }
     
-    // TODO: Duplication is dit nodig?
     public struct Signature: NIOSSHSignatureProtocol {
         public static let signaturePrefix = "ssh-ed25519"
         
@@ -65,7 +63,7 @@ public enum ED25519 {
         
         public static func read(from buffer: inout ByteBuffer) throws -> Signature {
             guard let buffer = buffer.readSSHBuffer() else {
-                fatalError()
+                throw ED25519Error(message: "Invalid signature format")
             }
             
             return Signature(rawRepresentation: buffer.getData(at: 0, length: buffer.readableBytes)!)
@@ -93,4 +91,8 @@ public enum ED25519 {
             Signature(rawRepresentation: data)
         }
     }
+}
+
+public struct ED25519Error: Error {
+    let message: String
 }

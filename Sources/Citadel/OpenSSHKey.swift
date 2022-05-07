@@ -5,11 +5,11 @@ import NIO
 import Crypto
 import NIOSSH
 
-protocol ReadableFromBuffer {
+internal protocol ReadableFromBuffer {
     static func read(from buffer: inout ByteBuffer) throws -> Self
 }
 
-protocol OpenSSHKeyProtocol {
+internal protocol OpenSSHKeyProtocol {
     static var keyType: OpenSSH.KeyType { get }
     associatedtype PublicKey: NIOSSHPublicKeyProtocol
     associatedtype PrivateKey: NIOSSHPrivateKeyProtocol, ReadableFromBuffer
@@ -20,6 +20,9 @@ extension OpenSSHKeyProtocol {
         .init(rawValue: PrivateKey.keyPrefix)!
     }
 }
+
+extension Insecure.RSA: OpenSSHKeyProtocol {}
+extension ED25519: OpenSSHKeyProtocol {}
 
 extension Insecure.RSA.PrivateKey: ReadableFromBuffer {
     static func read(from buffer: inout ByteBuffer) throws -> Self {
@@ -68,10 +71,6 @@ extension ED25519.PrivateKey: ReadableFromBuffer {
         return try Self.init(rawRepresentation: privateKey[..<32])
     }
 }
-
-extension Insecure.RSA: OpenSSHKeyProtocol {}
-
-extension ED25519: OpenSSHKeyProtocol {}
 
 enum OpenSSH {
     enum Cipher: String {
