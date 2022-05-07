@@ -9,14 +9,14 @@ import NIOSSH
 // Noteable links:
 // https://dnaeon.github.io/openssh-private-key-binary-format/
 
-internal protocol ReadableFromBuffer {
-    static func read(from buffer: inout ByteBuffer) throws -> Self
+internal protocol ParsableFromByteBuffer {
+    static func read(consuming buffer: inout ByteBuffer) throws -> Self
 }
 
 internal protocol OpenSSHKeyProtocol {
     static var keyType: OpenSSH.KeyType { get }
     associatedtype PublicKey: NIOSSHPublicKeyProtocol
-    associatedtype PrivateKey: NIOSSHPrivateKeyProtocol, ReadableFromBuffer
+    associatedtype PrivateKey: NIOSSHPrivateKeyProtocol, ParsableFromByteBuffer
 }
 
 extension OpenSSHKeyProtocol {
@@ -28,8 +28,8 @@ extension OpenSSHKeyProtocol {
 extension Insecure.RSA: OpenSSHKeyProtocol {}
 extension ED25519: OpenSSHKeyProtocol {}
 
-extension Insecure.RSA.PrivateKey: ReadableFromBuffer {
-    static func read(from buffer: inout ByteBuffer) throws -> Self {
+extension Insecure.RSA.PrivateKey: ParsableFromByteBuffer {
+    static func read(consuming buffer: inout ByteBuffer) throws -> Self {
         guard
             let nBytesLength = buffer.readInteger(as: UInt32.self),
             let nBytes = buffer.readBytes(length: Int(nBytesLength)),
@@ -55,8 +55,8 @@ extension Insecure.RSA.PrivateKey: ReadableFromBuffer {
     }
 }
 
-extension ED25519.PrivateKey: ReadableFromBuffer {
-    static func read(from buffer: inout ByteBuffer) throws -> Self {
+extension ED25519.PrivateKey: ParsableFromByteBuffer {
+    static func read(consuming buffer: inout ByteBuffer) throws -> Self {
         guard
             let publicKeyLength = buffer.readInteger(as: UInt32.self),
             let publicKey = buffer.readBytes(length: Int(publicKeyLength))
@@ -307,7 +307,7 @@ extension OpenSSH.PrivateKey {
             throw InvalidKey()
         }
         
-        self.privateKey = try SSHKey.PrivateKey.read(from: &privateKeyBuffer)
+        self.privateKey = try SSHKey.PrivateKey.read(consuming: &privateKeyBuffer)
         
         guard let comment = privateKeyBuffer.readSSHString() else { throw InvalidKey() }
         self.comment = comment
