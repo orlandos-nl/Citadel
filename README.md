@@ -6,8 +6,28 @@ It features the following helpers:
 
 - [x] TCP-IP forwarding child channels
 - [x] Basic SFTP Client
+- [x] TTY support
+
+[Read the docs](https://orlandos.nl/docs/citadel)
 
 ## Usage
+
+If you have any questions, [join the Discord](https://discord.gg/RBrYM8C6Pa)
+
+### Supporting Older Cryptography
+
+If you need deprecated crypto support, you can enable Citadel's (or custom) algorithms like so.
+This is a global setting and needs to happen before connecting.
+
+```swift
+NIOSSHAlgorithms.register(
+    publicKey: Insecure.RSA.PublicKey.self,
+    signature: Insecure.RSA.Signature.self
+)
+
+NIOSSHAlgorithms.register(transportProtectionScheme: AES128CTR.self)
+NIOSSHAlgorithms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
+```
 
 ### SSH Proxy for MongoKitten
 

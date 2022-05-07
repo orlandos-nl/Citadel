@@ -18,7 +18,8 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", .revision("171bb0447d52928b4c49790579c98006e1d4ccd4")),
+        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", branch: "citadel2"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "2.1.0"),
     ],
@@ -32,10 +33,17 @@ let package = Package(
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
                 .product(name: "BigInt", package: "BigInt"),
+                .product(name: "Logging", package: "swift-log"),
             ]
         ),
         .testTarget(
             name: "CitadelTests",
-            dependencies: ["Citadel"]),
+            dependencies: [
+                "Citadel",
+                .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "BigInt", package: "BigInt"),
+                .product(name: "Logging", package: "swift-log"),
+            ]
+        ),
     ]
 )

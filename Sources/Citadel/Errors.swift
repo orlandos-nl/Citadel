@@ -14,4 +14,6 @@ enum SFTPError: Error {
     case noResponseTarget
     case connectionClosed
     case missingResponse
+    case fileHandleInvalid
+    case unsupportedVersion(SFTPProtocolVersion)
 }

@@ -42,7 +42,7 @@ let dh14p: [UInt8] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 ]
 
-public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
+public struct DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
     public static let keyExchangeInitMessageId: UInt8 = 30
     public static let keyExchangeReplyMessageId: UInt8 = 31
     
@@ -74,11 +74,17 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         return buffer
     }
     
-    public func completeKeyExchangeServerSide(clientKeyExchangeMessage message: ByteBuffer, serverHostKey: NIOSSHPrivateKey, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
+    public mutating func completeKeyExchangeServerSide(
+        clientKeyExchangeMessage message: ByteBuffer,
+        serverHostKey: NIOSSHPrivateKey,
+        initialExchangeBytes: inout ByteBuffer,
+        allocator: ByteBufferAllocator,
+        expectedKeySizes: ExpectedKeySizes
+    ) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
         throw CitadelError.unsupported
     }
     
-    public func receiveServerKeyExchangePayload(serverKeyExchangeMessage: NIOSSHKeyExchangeServerReply, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
+    public mutating func receiveServerKeyExchangePayload(serverKeyExchangeMessage: NIOSSHKeyExchangeServerReply, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
         let kexResult = try self.finalizeKeyExchange(theirKeyBytes: serverKeyExchangeMessage.publicKey,
                                                      initialExchangeBytes: &initialExchangeBytes,
                                                      serverHostKey: serverKeyExchangeMessage.hostKey,
@@ -89,7 +95,7 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         guard serverKeyExchangeMessage.hostKey.isValidSignature(serverKeyExchangeMessage.signature, for: kexResult.exchangeHash) else {
             throw CitadelError.invalidSignature
         }
-
+        
         // Great, all done here.
         return KeyExchangeResult(
             sessionID: kexResult.sessionID,
@@ -97,7 +103,7 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
         )
     }
     
-    private func finalizeKeyExchange(theirKeyBytes f: ByteBuffer,
+    private mutating func finalizeKeyExchange(theirKeyBytes f: ByteBuffer,
                                               initialExchangeBytes: inout ByteBuffer,
                                               serverHostKey: NIOSSHPublicKey,
                                               allocator: ByteBufferAllocator,
@@ -144,16 +150,16 @@ public final class DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol 
             return array.map { String(format: "%02hhx", $0) }.joined()
         }
         
-        var offset = initialExchangeBytes.writerIndex
+        //var offset = initialExchangeBytes.writerIndex
         initialExchangeBytes.writeCompositeSSHString {
             serverHostKey.write(to: &$0)
         }
         
-        offset = initialExchangeBytes.writerIndex
+        //offset = initialExchangeBytes.writerIndex
         switch self.ourRole {
         case .client:
             initialExchangeBytes.writeMPBignum(ourKey._publicKey.modulus)
-            offset = initialExchangeBytes.writerIndex
+            //offset = initialExchangeBytes.writerIndex
             initialExchangeBytes.writeMPBignum(serverPublicKey)
         case .server:
             initialExchangeBytes.writeMPBignum(serverPublicKey)

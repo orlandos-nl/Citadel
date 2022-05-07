@@ -2,10 +2,15 @@ import Crypto
 import BigInt
 import NIO
 import XCTest
+import Logging
 @testable import Citadel
 import NIOSSH
 
 final class Citadel2Tests: XCTestCase {
+    override class func setUp() {
+        XCTAssert(isLoggingConfigured)
+    }
+    
     func testBigIntSerialization() {
         var buffer = ByteBuffer()
         var bigInt = BigUInt.randomInteger(lessThan: 100_000_000_000)
@@ -27,18 +32,18 @@ final class Citadel2Tests: XCTestCase {
     
     func testTTY() async throws {
         let client = try await SSHClient.connect(
-            host: "10.211.55.4",
-            authenticationMethod: .passwordBased(username: "parallels", password: ""),
+            host: "localhost",
+            authenticationMethod: .passwordBased(username: "sftp_test", password: ""),
             hostKeyValidator: .acceptAnything(),
             reconnect: .never
         )
         
         var buffer = try await client.executeCommand("echo a")
-        print(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "a\n")
         buffer = try await client.executeCommand("echo b")
-        print(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "b\n")
         buffer = try await client.executeCommand("echo c")
-        print(buffer.getString(at: 0, length: buffer.readableBytes)!)
+        XCTAssertEqual(buffer.getString(at: 0, length: buffer.readableBytes)!, "c\n")
     }
     
     func testMPInt() throws {
@@ -84,26 +89,28 @@ final class Citadel2Tests: XCTestCase {
         NIOSSHAlgorithms.register(keyExchangeAlgorithm: DiffieHellmanGroup14Sha1.self)
         
         let ssh = try await SSHClient.connect(
-          host: "10.211.55.4",
-          authenticationMethod: .passwordBased(username: "parallels", password: "Zeus@1290"),
+          host: "localhost",
+          authenticationMethod: .passwordBased(username: "sftp_test", password: ""),
           hostKeyValidator: .acceptAnything(), // It's easy, but you should put your hostkey signature in here
           reconnect: .never
         )
-        
-        do {
-            let sftp = try await ssh.openSFTP()
-            let file = try await sftp.openFile(filePath: ".bashrc", flags: .read)
-            var data = try await file.readAll()
-            print(data.readString(length: data.readableBytes)!)
-        } catch let error as SFTPMessage.Status {
-            print(error)
-            XCTFail()
-        } catch {
-            XCTFail()
+        let sftp = try await ssh.openSFTP(logger: .init(label: "sftp.test"))
+        let tmpfile = "/tmp/sftp_test_\(UUID().uuidString)"
+        try await sftp.withFile(filePath: tmpfile, flags: [.create, .write, .truncate]) {
+            try await $0.write(.init(data: "hello world".data(using: .utf8)!))
+        }
+        try await sftp.withFile(filePath: tmpfile, flags: [.read]) {
+            let data = try await $0.readAll()
+            XCTAssertEqual(String(decoding: data.readableBytesView, as: UTF8.self), "hello world")
         }
     }
-
-//    static var allTests = [
-//        ("testBigIntSerialization", testBigIntSerialization),
-//    ]
 }
+
+let isLoggingConfigured: Bool = {
+    LoggingSystem.bootstrap { label in
+        var handler = StreamLogHandler.standardOutput(label: label)
+        handler.logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"].flatMap { Logger.Level(rawValue: $0) } ?? .debug
+        return handler
+    }
+    return true
+}()

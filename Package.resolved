@@ -20,6 +20,15 @@
         }
       },
       {
+        "package": "swift-log",
+        "repositoryURL": "https://github.com/apple/swift-log.git",
+        "state": {
+          "branch": null,
+          "revision": "5d66f7ba25daf4f94100e7022febf3c75e37a6c7",
+          "version": "1.4.2"
+        }
+      },
+      {
         "package": "swift-nio",
         "repositoryURL": "https://github.com/apple/swift-nio.git",
         "state": {
@@ -32,7 +41,7 @@
         "package": "swift-nio-ssh",
         "repositoryURL": "https://github.com/Joannis/swift-nio-ssh.git",
         "state": {
-          "branch": null,
+          "branch": "citadel2",
           "revision": "171bb0447d52928b4c49790579c98006e1d4ccd4",
           "version": null
         }
