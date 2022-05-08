@@ -105,6 +105,10 @@ extension Insecure.RSA {
             return writtenBytes
         }
         
+        static func read(consuming buffer: inout ByteBuffer) throws -> Insecure.RSA.PublicKey {
+            try read(from: &buffer)
+        }
+        
         public static func read(from buffer: inout ByteBuffer) throws -> Insecure.RSA.PublicKey {
             guard
                 var publicExponent = buffer.readSSHBuffer(),

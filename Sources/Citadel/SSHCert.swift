@@ -7,8 +7,8 @@ import NIOSSH
 
 struct InvalidKey: Error {}
 
-extension Curve25519.Signing.PublicKey: ReadableFromBuffer {
-    static func read(from buffer: inout ByteBuffer) throws -> Curve25519.Signing.PublicKey {
+extension Curve25519.Signing.PublicKey: ParsableFromByteBuffer {
+    static func read(consuming buffer: inout ByteBuffer) throws -> Curve25519.Signing.PublicKey {
         guard var publicKeyBuffer = buffer.readSSHBuffer() else {
             throw InvalidKey()
         }
@@ -36,7 +36,7 @@ extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
     }
 }
 
-extension Insecure.RSA.PublicKey: ReadableFromBuffer {}
+extension Insecure.RSA.PublicKey: ParsableFromByteBuffer {}
 
 extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
     typealias PublicKey = Insecure.RSA.PublicKey
