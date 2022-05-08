@@ -7,8 +7,23 @@ import NIOSSH
 
 struct InvalidKey: Error {}
 
-extension ED25519.PrivateKey {
-    public convenience init(sshEd25519 data: Data, decryptionKey: Data? = nil) throws {
+extension Curve25519.Signing.PublicKey: ReadableFromBuffer {
+    static func read(from buffer: inout ByteBuffer) throws -> Curve25519.Signing.PublicKey {
+        guard var publicKeyBuffer = buffer.readSSHBuffer() else {
+            throw InvalidKey()
+        }
+        
+        return try self.init(rawRepresentation: publicKeyBuffer.readBytes(length: publicKeyBuffer.readableBytes)!)
+    }
+}
+
+extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
+    typealias PublicKey = Curve25519.Signing.PublicKey
+    static var publicKeyPrefix: String { "ssh-ed25519" }
+    static var privateKeyPrefix: String { "ssh-ed25519" }
+    static var keyType: OpenSSH.KeyType { .sshED25519 }
+    
+    public init(sshEd25519 data: Data, decryptionKey: Data? = nil) throws {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshEd25519: string, decryptionKey: decryptionKey)
         } else {
@@ -16,13 +31,20 @@ extension ED25519.PrivateKey {
         }
     }
     
-    public convenience init(sshEd25519 key: String, decryptionKey: Data? = nil) throws {
-        let openSSHKey = try OpenSSH.PrivateKey<ED25519>.init(string: key, decryptionKey: decryptionKey)
-        try self.init(rawRepresentation: openSSHKey.privateKey.rawRepresentation)
+    public init(sshEd25519 key: String, decryptionKey: Data? = nil) throws {
+        self = try OpenSSH.PrivateKey<Curve25519.Signing.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
     }
 }
 
-extension Insecure.RSA.PrivateKey {
+extension Insecure.RSA.PublicKey: ReadableFromBuffer {}
+
+extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
+    typealias PublicKey = Insecure.RSA.PublicKey
+    
+    static var publicKeyPrefix: String { "ssh-rsa" }
+    static var privateKeyPrefix: String { "ssh-rsa" }
+    static var keyType: OpenSSH.KeyType { .sshRSA }
+    
     public convenience init(sshRsa data: Data, decryptionKey: Data? = nil) throws {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshRsa: string, decryptionKey: decryptionKey)
@@ -32,7 +54,7 @@ extension Insecure.RSA.PrivateKey {
     }
     
     public convenience init(sshRsa key: String, decryptionKey: Data? = nil) throws {
-        let privateKey = try OpenSSH.PrivateKey<Insecure.RSA>.init(string: key, decryptionKey: decryptionKey).privateKey
+        let privateKey = try OpenSSH.PrivateKey<Insecure.RSA.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
         let publicKey = privateKey.publicKey as! Insecure.RSA.PublicKey
         
         // Copy, so that our values stored in `privateKey` aren't freed when exciting the initializers scope

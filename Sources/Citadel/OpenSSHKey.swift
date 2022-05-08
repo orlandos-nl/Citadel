@@ -13,20 +13,13 @@ internal protocol ReadableFromBuffer {
     static func read(from buffer: inout ByteBuffer) throws -> Self
 }
 
-internal protocol OpenSSHKeyProtocol {
+protocol OpenSSHPrivateKey: ReadableFromBuffer {
+    static var privateKeyPrefix: String { get }
+    static var publicKeyPrefix: String { get }
     static var keyType: OpenSSH.KeyType { get }
-    associatedtype PublicKey: NIOSSHPublicKeyProtocol
-    associatedtype PrivateKey: NIOSSHPrivateKeyProtocol, ReadableFromBuffer
+    
+    associatedtype PublicKey: ReadableFromBuffer
 }
-
-extension OpenSSHKeyProtocol {
-    static var keyType: OpenSSH.KeyType {
-        .init(rawValue: PrivateKey.keyPrefix)!
-    }
-}
-
-extension Insecure.RSA: OpenSSHKeyProtocol {}
-extension ED25519: OpenSSHKeyProtocol {}
 
 extension Insecure.RSA.PrivateKey: ReadableFromBuffer {
     static func read(from buffer: inout ByteBuffer) throws -> Self {
@@ -55,24 +48,22 @@ extension Insecure.RSA.PrivateKey: ReadableFromBuffer {
     }
 }
 
-extension ED25519.PrivateKey: ReadableFromBuffer {
+extension Curve25519.Signing.PrivateKey: ReadableFromBuffer {
     static func read(from buffer: inout ByteBuffer) throws -> Self {
-        guard
-            let publicKeyLength = buffer.readInteger(as: UInt32.self),
-            let publicKey = buffer.readBytes(length: Int(publicKeyLength))
-        else {
+        guard let publicKey = buffer.readSSHBuffer() else {
             throw InvalidKey()
         }
 
         guard
-            let privateKeyLength = buffer.readInteger(as: UInt32.self),
-            let privateKey = buffer.readBytes(length: Int(privateKeyLength)),
-            Array(privateKey[32...]) == publicKey
+            var buffer = buffer.readSSHBuffer(),
+            let privateKeyBytes = buffer.readBytes(length: 32),
+            let publicKeyBytes = buffer.readSlice(length: buffer.readerIndex),
+            publicKeyBytes == publicKey
         else {
             throw InvalidKey()
         }
         
-        return try Self.init(rawRepresentation: privateKey[..<32])
+        return try Self.init(rawRepresentation: privateKeyBytes)
     }
 }
 
@@ -214,12 +205,12 @@ enum OpenSSH {
         case sshED25519 = "ssh-ed25519"
     }
     
-    struct PrivateKey<SSHKey: OpenSSHKeyProtocol> {
+    struct PrivateKey<SSHKey: OpenSSHPrivateKey> {
         let cipher: Cipher
         let kdf: KDF
         let numberOfKeys: Int
         let publicKey: SSHKey.PublicKey
-        let privateKey: SSHKey.PrivateKey
+        let privateKey: SSHKey
         let comment: String
         
         var keyType: KeyType {
@@ -269,22 +260,16 @@ extension OpenSSH.PrivateKey {
         
         self.numberOfKeys = Int(numberOfKeys)
         
-        guard
-            let publicKeyBufferLength = buffer.readInteger(as: UInt32.self).map(Int.init),
-            var publicKeyBuffer = buffer.readSlice(length: publicKeyBufferLength)
-        else {
+        guard var publicKeyBuffer = buffer.readSSHBuffer() else {
             throw InvalidKey()
         }
         
         let publicKeyType = try OpenSSH.KeyType(from: &publicKeyBuffer)
-        guard publicKeyType.rawValue == SSHKey.PublicKey.publicKeyPrefix else { throw InvalidKey() }
+        guard publicKeyType.rawValue == SSHKey.publicKeyPrefix else { throw InvalidKey() }
         
         self.publicKey = try SSHKey.PublicKey.read(from: &publicKeyBuffer)
         
-        guard
-            let privateKeyBufferLength = buffer.readInteger(as: UInt32.self).map(Int.init),
-            var privateKeyBuffer = buffer.readSlice(length: privateKeyBufferLength)
-        else {
+        guard var privateKeyBuffer = buffer.readSSHBuffer() else {
             throw InvalidKey()
         }
         
@@ -301,13 +286,13 @@ extension OpenSSH.PrivateKey {
         
         let privateKeyType = try OpenSSH.KeyType(from: &privateKeyBuffer)
         guard
-            privateKeyType.rawValue == SSHKey.PrivateKey.keyPrefix,
+            privateKeyType.rawValue == SSHKey.privateKeyPrefix,
             privateKeyType == publicKeyType
         else {
             throw InvalidKey()
         }
         
-        self.privateKey = try SSHKey.PrivateKey.read(from: &privateKeyBuffer)
+        self.privateKey = try SSHKey.read(from: &privateKeyBuffer)
         
         guard let comment = privateKeyBuffer.readSSHString() else { throw InvalidKey() }
         self.comment = comment

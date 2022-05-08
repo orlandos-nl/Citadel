@@ -75,10 +75,10 @@ final class KeyTests: XCTestCase {
         -----END OPENSSH PRIVATE KEY-----
         """
         
-        let privateKey = try ED25519.PrivateKey(sshEd25519: key, decryptionKey: "example".data(using: .utf8)!)
+        let privateKey = try Curve25519.Signing.PrivateKey(sshEd25519: key, decryptionKey: "example".data(using: .utf8)!)
         XCTAssertNotNil(privateKey)
         
-        let openSSHPrivateKey = try ED25519.PrivateKey(sshEd25519: key, decryptionKey: "example".data(using: .utf8)!)
+        let openSSHPrivateKey = try Curve25519.Signing.PrivateKey(sshEd25519: key, decryptionKey: "example".data(using: .utf8)!)
         XCTAssertNotNil(openSSHPrivateKey)
     }
     
@@ -93,10 +93,10 @@ final class KeyTests: XCTestCase {
         -----END OPENSSH PRIVATE KEY-----
         """
         
-        let privateKey = try ED25519.PrivateKey(sshEd25519: key)
+        let privateKey = try Curve25519.Signing.PrivateKey(sshEd25519: key)
         XCTAssertNotNil(privateKey)
         
-        let openSSHPrivateKey = try ED25519.PrivateKey(sshEd25519: key)
+        let openSSHPrivateKey = try Curve25519.Signing.PrivateKey(sshEd25519: key)
         XCTAssertNotNil(openSSHPrivateKey)
     }
 }
