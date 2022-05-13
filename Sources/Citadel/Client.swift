@@ -1,12 +1,48 @@
 import NIO
 import NIOSSH
 
+public struct SSHAlgorithms {
+    public enum Modification<T> {
+        case replace(with: [T])
+        case add([T])
+    }
+    
+    /// The enabled TransportProtectionSchemes
+    public var transportProtectionSchemes: Modification<NIOSSHTransportProtection.Type>?
+    
+    /// The enabled KeyExchangeAlgorithms
+    public var keyExchangeAlgorithms: Modification<NIOSSHKeyExchangeAlgorithmProtocol.Type>?
+
+    func apply(to clientConfiguration: inout SSHClientConfiguration) {
+        switch transportProtectionSchemes {
+        case .add(let algorithms):
+            clientConfiguration.transportProtectionSchemes.append(contentsOf: algorithms)
+        case .replace(with: let algorithms):
+            clientConfiguration.transportProtectionSchemes = algorithms
+        case .none:
+            ()
+        }
+        
+        switch keyExchangeAlgorithms {
+        case .add(let algorithms):
+            clientConfiguration.keyExchangeAlgorithms.append(contentsOf: algorithms)
+        case .replace(with: let algorithms):
+            clientConfiguration.keyExchangeAlgorithms = algorithms
+        case .none:
+            ()
+        }
+    }
+    
+    public init() {}
+}
+
 public final class SSHClient {
     private(set) var session: SSHClientSession
     private var userInitiatedClose = false
     let authenticationMethod: SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
     internal var connectionSettings = SSHConnectionSettings()
+    private let algorithms: SSHAlgorithms
     public var eventLoop: EventLoop {
         session.channel.eventLoop
     }
@@ -14,17 +50,20 @@ public final class SSHClient {
     init(
         session: SSHClientSession,
         authenticationMethod: SSHAuthenticationMethod,
-        hostKeyValidator: SSHHostKeyValidator
+        hostKeyValidator: SSHHostKeyValidator,
+        algorithms: SSHAlgorithms = SSHAlgorithms()
     ) {
         self.session = session
         self.authenticationMethod = authenticationMethod
         self.hostKeyValidator = hostKeyValidator
+        self.algorithms = algorithms
     }
     
     public static func connect(
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
-        hostKeyValidator: SSHHostKeyValidator
+        hostKeyValidator: SSHHostKeyValidator,
+        algorithms: SSHAlgorithms = SSHAlgorithms()
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
             on: channel,
@@ -35,7 +74,8 @@ public final class SSHClient {
         return SSHClient(
             session: session,
             authenticationMethod: authenticationMethod,
-            hostKeyValidator: hostKeyValidator
+            hostKeyValidator: hostKeyValidator,
+            algorithms: algorithms
         )
     }
     
@@ -45,6 +85,7 @@ public final class SSHClient {
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         reconnect: SSHReconnectMode,
+        algorithms: SSHAlgorithms = SSHAlgorithms(),
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
@@ -52,13 +93,15 @@ public final class SSHClient {
             port: port,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: hostKeyValidator,
+            algorithms: algorithms,
             group: group
         )
         
         let client = SSHClient(
             session: session,
             authenticationMethod: authenticationMethod,
-            hostKeyValidator: hostKeyValidator
+            hostKeyValidator: hostKeyValidator,
+            algorithms: algorithms
         )
         
         switch reconnect.mode {

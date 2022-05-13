@@ -45,17 +45,20 @@ final class SSHClientSession {
     public static func connect(
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
-        hostKeyValidator: SSHHostKeyValidator
+        hostKeyValidator: SSHHostKeyValidator,
+        algorithms: SSHAlgorithms = SSHAlgorithms()
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: channel.eventLoop)
+        var clientConfiguration = SSHClientConfiguration(
+            userAuthDelegate: authenticationMethod,
+            serverAuthDelegate: hostKeyValidator
+        )
+        
+        algorithms.apply(to: &clientConfiguration)
+        
         return try await channel.pipeline.addHandlers(
             NIOSSHHandler(
-                role: .client(
-                    .init(
-                        userAuthDelegate: authenticationMethod,
-                        serverAuthDelegate: hostKeyValidator
-                    )
-                ),
+                role: .client(clientConfiguration),
                 allocator: channel.allocator,
                 inboundChildChannelInitializer: nil
             ),
@@ -74,18 +77,21 @@ final class SSHClientSession {
         port: Int = 22,
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
+        algorithms: SSHAlgorithms = SSHAlgorithms(),
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
+        var clientConfiguration = SSHClientConfiguration(
+            userAuthDelegate: authenticationMethod,
+            serverAuthDelegate: hostKeyValidator
+        )
+        
+        algorithms.apply(to: &clientConfiguration)
+        
         let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
             channel.pipeline.addHandlers([
                 NIOSSHHandler(
-                    role: .client(
-                        .init(
-                            userAuthDelegate: authenticationMethod,
-                            serverAuthDelegate: hostKeyValidator
-                        )
-                    ),
+                    role: .client(clientConfiguration),
                     allocator: channel.allocator,
                     inboundChildChannelInitializer: nil
                 ),
