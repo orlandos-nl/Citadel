@@ -7,111 +7,65 @@ import NIOSSH
 
 struct InvalidKey: Error {}
 
-extension Insecure.RSA.PrivateKey {
-    public convenience init(sshRsa data: Data) throws {
+extension Curve25519.Signing.PublicKey: ParsableFromByteBuffer {
+    static func read(consuming buffer: inout ByteBuffer) throws -> Curve25519.Signing.PublicKey {
+        guard var publicKeyBuffer = buffer.readSSHBuffer() else {
+            throw InvalidKey()
+        }
+        
+        return try self.init(rawRepresentation: publicKeyBuffer.readBytes(length: publicKeyBuffer.readableBytes)!)
+    }
+}
+
+extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
+    typealias PublicKey = Curve25519.Signing.PublicKey
+    static var publicKeyPrefix: String { "ssh-ed25519" }
+    static var privateKeyPrefix: String { "ssh-ed25519" }
+    static var keyType: OpenSSH.KeyType { .sshED25519 }
+    
+    public init(sshEd25519 data: Data, decryptionKey: Data? = nil) throws {
         if let string = String(data: data, encoding: .utf8) {
-            try self.init(sshRsa: string)
+            try self.init(sshEd25519: string, decryptionKey: decryptionKey)
         } else {
             throw InvalidKey()
         }
     }
     
-    public convenience init(sshRsa key: String) throws {
-        var key = key.replacingOccurrences(of: "\n", with: "")
-        
-        guard
-            key.hasPrefix("-----BEGIN OPENSSH PRIVATE KEY-----"),
-            key.hasSuffix("-----END OPENSSH PRIVATE KEY-----")
-        else {
-            throw InvalidKey()
-        }
-        
-        key.removeLast("-----END OPENSSH PRIVATE KEY-----".utf8.count)
-        key.removeFirst("-----BEGIN OPENSSH PRIVATE KEY-----".utf8.count)
-        
-        guard let data = Data(base64Encoded: key) else {
-            throw InvalidKey()
-        }
-        
-        var buffer = ByteBuffer(data: data)
-        
-        guard
-            buffer.readString(length: "openssh-key-v1".utf8.count) == "openssh-key-v1",
-            buffer.readInteger(as: UInt8.self) == 0x00,
-            buffer.readInteger(as: UInt32.self) == 4, // Cipher Name
-            buffer.readString(length: 4) == "none", // Cipher Name
-            buffer.readInteger(as: UInt32.self) == 4, // KDF Name
-            buffer.readString(length: 4) == "none", // KDF Name
-            buffer.readInteger(as: UInt32.self) == 0, // KDF,
-            buffer.readInteger(as: UInt32.self) == 1 // # of keys
-        else {
-            throw InvalidKey()
-        }
-        
-        guard
-            let publicKeyLength = buffer.readInteger(as: UInt32.self),
-            var publicKeyBuffer = buffer.readSlice(length: Int(publicKeyLength)),
-            let publicKeyTypeLength = publicKeyBuffer.readInteger(as: UInt32.self),
-            let publicKeyType = publicKeyBuffer.readString(length: Int(publicKeyTypeLength))
-        else {
-            throw InvalidKey()
-        }
-        
-        guard publicKeyType == "ssh-rsa" else {
-            throw InvalidKey()
-        }
-        
-        guard
-            let eLength = publicKeyBuffer.readInteger(as: UInt32.self),
-            let eData = publicKeyBuffer.readData(length: Int(eLength)),
-            let nLength = publicKeyBuffer.readInteger(as: UInt32.self),
-            let nData = publicKeyBuffer.readData(length: Int(nLength))
-        else {
-            throw InvalidKey()
-        }
+    public init(sshEd25519 key: String, decryptionKey: Data? = nil) throws {
+        self = try OpenSSH.PrivateKey<Curve25519.Signing.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
+    }
+}
 
-        let _ = BigUInt(eData) // e
-        let _ = BigUInt(nData) // n
+extension Insecure.RSA.PublicKey: ParsableFromByteBuffer {}
 
-        guard
-            let privateKeyLength = buffer.readInteger(as: UInt32.self),
-            var privateKeyBuffer = buffer.readSlice(length: Int(privateKeyLength))
-        else {
+extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
+    typealias PublicKey = Insecure.RSA.PublicKey
+    
+    static var publicKeyPrefix: String { "ssh-rsa" }
+    static var privateKeyPrefix: String { "ssh-rsa" }
+    static var keyType: OpenSSH.KeyType { .sshRSA }
+    
+    public convenience init(sshRsa data: Data, decryptionKey: Data? = nil) throws {
+        if let string = String(data: data, encoding: .utf8) {
+            try self.init(sshRsa: string, decryptionKey: decryptionKey)
+        } else {
             throw InvalidKey()
         }
+    }
+    
+    public convenience init(sshRsa key: String, decryptionKey: Data? = nil) throws {
+        let privateKey = try OpenSSH.PrivateKey<Insecure.RSA.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
+        let publicKey = privateKey.publicKey as! Insecure.RSA.PublicKey
         
-        guard
-            let _ = privateKeyBuffer.readInteger(as: UInt64.self),
-            let privateKeyTypeLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let privateKeyType = privateKeyBuffer.readString(length: Int(privateKeyTypeLength)),
-            privateKeyType == publicKeyType
-        else {
-            throw InvalidKey()
-        }
+        // Copy, so that our values stored in `privateKey` aren't freed when exciting the initializers scope
+        let modulus = CCryptoBoringSSL_BN_new()!
+        let publicExponent = CCryptoBoringSSL_BN_new()!
+        let privateExponent = CCryptoBoringSSL_BN_new()!
         
-        guard
-            let nBytesLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let nBytes = privateKeyBuffer.readBytes(length: Int(nBytesLength)),
-            let eBytesLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let eBytes = privateKeyBuffer.readBytes(length: Int(eBytesLength)),
-            let dLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let dBytes = privateKeyBuffer.readBytes(length: Int(dLength)),
-            let iqmpLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let _ = privateKeyBuffer.readData(length: Int(iqmpLength)),
-            let pLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let _ = privateKeyBuffer.readData(length: Int(pLength)),
-            let qLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let _ = privateKeyBuffer.readData(length: Int(qLength)),
-            let commentLength = privateKeyBuffer.readInteger(as: UInt32.self),
-            let _ = privateKeyBuffer.readString(length: Int(commentLength))
-        else {
-            throw InvalidKey()
-        }
+        CCryptoBoringSSL_BN_copy(modulus, publicKey.modulus)
+        CCryptoBoringSSL_BN_copy(publicExponent, publicKey.publicExponent)
+        CCryptoBoringSSL_BN_copy(privateExponent, privateKey.privateExponent)
         
-        let privateExponent = CCryptoBoringSSL_BN_bin2bn(dBytes, dBytes.count, nil)!
-        let publicExponent = CCryptoBoringSSL_BN_bin2bn(eBytes, eBytes.count, nil)!
-        let modulus = CCryptoBoringSSL_BN_bin2bn(nBytes, nBytes.count, nil)!
-
         self.init(privateExponent: privateExponent, publicExponent: publicExponent, modulus: modulus)
     }
 }

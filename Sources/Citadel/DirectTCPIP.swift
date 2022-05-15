@@ -37,9 +37,9 @@ final class DataToBufferCodec: ChannelDuplexHandler {
 extension SSHClient {
     public func createDirectTCPIPChannel(
         using settings: SSHChannelType.DirectTCPIP,
-        initialize: @escaping (Channel) async throws -> Void
+        initialize: @escaping (Channel) -> EventLoopFuture<Void>
     ) async throws -> Channel {
-        try await eventLoop.flatSubmit {
+        return try await eventLoop.flatSubmit {
             let createdChannel = self.eventLoop.makePromise(of: Channel.self)
             self.session.sshHandler.createChannel(
                 createdChannel,
@@ -50,11 +50,7 @@ extension SSHClient {
                 }
                 
                 return channel.pipeline.addHandler(DataToBufferCodec()).flatMap {
-                    let promise = channel.eventLoop.makePromise(of: Void.self)
-                    promise.completeWithTask {
-                        try await initialize(channel)
-                    }
-                    return promise.futureResult
+                    return initialize(channel)
                 }
             }
             
