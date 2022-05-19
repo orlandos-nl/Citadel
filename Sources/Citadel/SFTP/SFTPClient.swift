@@ -151,19 +151,19 @@ public final class SFTPClient {
         }
     }
     
-    public func mkdir(
-        filePath: String,
+    public func createDirectory(
+        atPath path: String,
         attributes: SFTPFileAttributes = .none
     ) async throws {
-        self.logger.info("SFTP requesting mkdir at '\(filePath)'")
+        self.logger.info("SFTP requesting mkdir at '\(path)'")
         
         let _ = try await sendRequest(.mkdir(.init(
             requestId: self.allocateRequestId(),
-            filePath: filePath,
+            filePath: path,
             attributes: attributes
         )))
         
-        self.logger.debug("SFTP created directory \(filePath)")
+        self.logger.debug("SFTP created directory \(path)")
     }
 }
 
