@@ -24,8 +24,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(openFile.requestId)
             out.writeSSHString(openFile.filePath)
             out.writeInteger(openFile.pFlags.rawValue)
-            out.writeInteger(0 as UInt32)
-//            out.writeSFTPFileAttribues(openFile.attributes)
+            out.writeSFTPFileAttribues(openFile.attributes)
         case .closeFile(var closeFile):
             out.writeInteger(SFTPMessage.CloseFile.id.rawValue)
             out.writeInteger(closeFile.requestId)
@@ -56,6 +55,11 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(SFTPMessage.FileData.id.rawValue)
             out.writeInteger(data.requestId)
             out.writeSSHString(&data.data)
+        case .mkdir(let mkdir):
+            out.writeInteger(SFTPMessage.MkDir.id.rawValue)
+            out.writeInteger(mkdir.requestId)
+            out.writeSSHString(mkdir.filePath)
+            out.writeSFTPFileAttribues(mkdir.attributes)
         }
         
         let length = out.writerIndex - lengthIndex - 4

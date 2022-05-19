@@ -150,6 +150,21 @@ public final class SFTPClient {
             throw error
         }
     }
+    
+    public func mkdir(
+        filePath: String,
+        attributes: SFTPFileAttributes = .none
+    ) async throws {
+        self.logger.info("SFTP requesting mkdir at '\(filePath)'")
+        
+        let _ = try await sendRequest(.mkdir(.init(
+            requestId: self.allocateRequestId(),
+            filePath: filePath,
+            attributes: attributes
+        )))
+        
+        self.logger.debug("SFTP created directory \(filePath)")
+    }
 }
 
 extension SSHClient {
