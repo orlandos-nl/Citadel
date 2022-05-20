@@ -22,11 +22,11 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "2.1.0"),
     ],
     targets: [
-        .target(name: "CBcrypt"),
+        .target(name: "CCitadelBcrypt"),
         .target(
             name: "Citadel",
             dependencies: [
-                .target(name: "CBcrypt"),
+                .target(name: "CCitadelBcrypt"),
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "_CryptoExtras", package: "swift-crypto"),

@@ -3,7 +3,7 @@ import BigInt
 import Foundation
 import NIO
 import Crypto
-import CBcrypt
+import CCitadelBcrypt
 import NIOSSH
 
 // Noteable links:
