@@ -1,0 +1,4 @@
+module CCitadelBcrypt [system][extern_c] {
+ header "../bcrypt-kdf.h"
+ export *
+}
