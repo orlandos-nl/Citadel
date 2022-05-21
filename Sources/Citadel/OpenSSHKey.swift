@@ -182,7 +182,7 @@ enum OpenSSH {
                 return try decryptionKey.withUnsafeBytes { decryptionKey in
                     let salt = salt.readBytes(length: salt.readableBytes)!
                     var key = [UInt8](repeating: 0, count: cipher.keyLength + cipher.ivLength)
-                    guard bcrypt_pbkdf(
+                    guard citadel_bcrypt_pbkdf(
                         decryptionKey.baseAddress!,
                         decryptionKey.count,
                         salt,

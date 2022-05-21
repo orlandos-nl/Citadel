@@ -51,20 +51,19 @@ bcrypt_hash(uint8_t *sha2pass, uint8_t *sha2salt, uint8_t *out)
     size_t shalen = SHA512_DIGEST_LENGTH;
     
     /* key expansion */
-    Blowfish_initstate(&state);
-    Blowfish_expandstate(&state, sha2salt, shalen, sha2pass, shalen);
+    citadel_Blowfish_initstate(&state);
+    citadel_Blowfish_expandstate(&state, sha2salt, shalen, sha2pass, shalen);
     for (i = 0; i < 64; i++) {
-        Blowfish_expand0state(&state, sha2salt, shalen);
-        Blowfish_expand0state(&state, sha2pass, shalen);
+        citadel_Blowfish_expand0state(&state, sha2salt, shalen);
+        citadel_Blowfish_expand0state(&state, sha2pass, shalen);
     }
     
     /* encryption */
     j = 0;
     for (i = 0; i < BCRYPT_WORDS; i++)
-            cdata[i] = Blowfish_stream2word(ciphertext, sizeof(ciphertext),
-                                            &j);
+            cdata[i] = citadel_Blowfish_stream2word(ciphertext, sizeof(ciphertext), &j);
     for (i = 0; i < 64; i++)
-            blf_enc(&state, cdata, BCRYPT_WORDS / 2);
+            citadel_blf_enc(&state, cdata, BCRYPT_WORDS / 2);
     
     /* copy out */
     for (i = 0; i < BCRYPT_WORDS; i++) {
@@ -81,8 +80,8 @@ bcrypt_hash(uint8_t *sha2pass, uint8_t *sha2salt, uint8_t *out)
 }
 
 int
-bcrypt_pbkdf(const char *pass, size_t passlen, const uint8_t *salt, size_t saltlen,
-             uint8_t *key, size_t keylen, unsigned int rounds)
+citadel_bcrypt_pbkdf(const char *pass, size_t passlen, const uint8_t *salt, size_t saltlen,
+                     uint8_t *key, size_t keylen, unsigned int rounds)
 {
     uint8_t sha2pass[SHA512_DIGEST_LENGTH];
     uint8_t sha2salt[SHA512_DIGEST_LENGTH];
@@ -107,7 +106,7 @@ bcrypt_pbkdf(const char *pass, size_t passlen, const uint8_t *salt, size_t saltl
     memcpy(countsalt, salt, saltlen);
     
     /* collapse password */
-    crypto_hash_sha512(sha2pass, pass, passlen);
+    citadel_crypto_hash_sha512(sha2pass, pass, passlen);
     
     /* generate key, sizeof(out) at a time */
     for (count = 1; keylen > 0; count++) {
@@ -117,14 +116,14 @@ bcrypt_pbkdf(const char *pass, size_t passlen, const uint8_t *salt, size_t saltl
         countsalt[saltlen + 3] = count & 0xff;
         
         /* first round, salt is salt */
-        crypto_hash_sha512(sha2salt, countsalt, saltlen + 4);
+        citadel_crypto_hash_sha512(sha2salt, countsalt, saltlen + 4);
         
         bcrypt_hash(sha2pass, sha2salt, tmpout);
         memcpy(out, tmpout, sizeof(out));
         
         for (i = 1; i < rounds; i++) {
             /* subsequent rounds, salt is previous output */
-            crypto_hash_sha512(sha2salt, tmpout, sizeof(tmpout));
+            citadel_crypto_hash_sha512(sha2salt, tmpout, sizeof(tmpout));
             bcrypt_hash(sha2pass, sha2salt, tmpout);
             for (j = 0; j < sizeof(out); j++)
                     out[j] ^= tmpout[j];
