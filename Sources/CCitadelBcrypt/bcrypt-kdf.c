@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 
 #include "bcrypt-kdf.h"
 #include "blf.h"
@@ -152,6 +153,10 @@ citadel_bcrypt_pbkdf(const char *pass, size_t passlen, const uint8_t *salt, size
     
 bad:
     /* overwrite with random in case caller doesn't check return code */
+#ifdef APPLE
     arc4random_buf(key, keylen);
+#else
+    getentropy(key, keylen);
+#endif
     return -1;
 }
