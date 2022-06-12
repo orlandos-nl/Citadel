@@ -84,7 +84,7 @@ bcrypt_hash(uint8_t *sha2pass, uint8_t *sha2salt, uint8_t *out)
 }
 
 int
-citadel_bcrypt_pbkdf(const char *pass, size_t passlen, const uint8_t *salt, size_t saltlen,
+citadel_bcrypt_pbkdf(const unsigned char *pass, size_t passlen, const uint8_t *salt, size_t saltlen,
                      uint8_t *key, size_t keylen, unsigned int rounds)
 {
     uint8_t sha2pass[SHA512_DIGEST_LENGTH];
@@ -162,4 +162,8 @@ bad:
     getentropy(key, keylen);
 #endif
     return -1;
+}
+
+void citadel_set_crypto_hash_sha512(void (*hash_fun)(unsigned char *out, const unsigned char *pass, unsigned long long passlen)) {
+    citadel_crypto_hash_sha512 = hash_fun;
 }

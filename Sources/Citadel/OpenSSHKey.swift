@@ -179,6 +179,10 @@ enum OpenSSH {
                     throw KeyError.missingDecryptionKey
                 }
                 
+                guard SHA512.didInit else {
+                    fatalError("Internal library error")
+                }
+                
                 return try decryptionKey.withUnsafeBytes { decryptionKey in
                     let salt = salt.readBytes(length: salt.readableBytes)!
                     var key = [UInt8](repeating: 0, count: cipher.keyLength + cipher.ivLength)
@@ -280,7 +284,7 @@ extension OpenSSH.PrivateKey {
             try cipher.decryptBuffer(&privateKeyBuffer, key: key, iv: iv)
         }
         
-        guard let checksum = privateKeyBuffer.readInteger(as: UInt64.self)  else {
+        guard privateKeyBuffer.readInteger(as: UInt64.self) != nil else {
             throw InvalidKey()
         }
         
