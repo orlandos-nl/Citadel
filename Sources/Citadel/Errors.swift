@@ -15,5 +15,6 @@ enum SFTPError: Error {
     case connectionClosed
     case missingResponse
     case fileHandleInvalid
+    case errorStatus(SFTPMessage.Status)
     case unsupportedVersion(SFTPProtocolVersion)
 }

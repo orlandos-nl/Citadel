@@ -60,6 +60,18 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(mkdir.requestId)
             out.writeSSHString(mkdir.filePath)
             out.writeSFTPFileAttribues(mkdir.attributes)
+        case .stat(let stat):
+            out.writeInteger(SFTPMessage.Stat.id.rawValue)
+            out.writeInteger(stat.requestId)
+            out.writeSSHString(stat.path)
+        case .lstat(let lstat):
+            out.writeInteger(SFTPMessage.LStat.id.rawValue)
+            out.writeInteger(lstat.requestId)
+            out.writeSSHString(lstat.path)
+        case .attributes(let fstat):
+            out.writeInteger(SFTPMessage.Attributes.id.rawValue)
+            out.writeInteger(fstat.requestId)
+            out.writeSFTPFileAttribues(fstat.attributes)
         }
         
         let length = out.writerIndex - lengthIndex - 4

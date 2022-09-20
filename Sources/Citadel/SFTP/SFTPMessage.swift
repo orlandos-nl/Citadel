@@ -95,7 +95,7 @@ enum SFTPResponse {
             self = .data(message)
         case .mkdir(let message):
             self = .mkdir(message)
-        case .openFile, .closeFile, .read, .write, .initialize, .version:
+        case .attributes, .openFile, .closeFile, .read, .write, .initialize, .version, .stat, .lstat:
             return nil
         }
     }
@@ -234,6 +234,40 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
+    public struct Stat: SFTPMessageContent {
+        public static let id = SFTPMessageType.stat
+        
+        public let requestId: UInt32
+        public let path: String
+        
+        public var debugDescription: String { "{\(self.requestId)}('\(self.path)'" }
+        
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct LStat: SFTPMessageContent {
+        public static let id = SFTPMessageType.lstat
+        
+        public let requestId: UInt32
+        public let path: String
+        
+        public var debugDescription: String { "{\(self.requestId)}('\(self.path)'" }
+        
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct Attributes: SFTPMessageContent {
+        public static let id = SFTPMessageType.attributes
+        
+        public let requestId: UInt32
+        public let attributes: SFTPFileAttributes
+        
+        public var debugDescription: String { "{\(self.requestId)}('\(self.attributes)'" }
+        
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    
     /// Client.
     ///
     /// Starts SFTP session and indicates client version.
@@ -286,13 +320,26 @@ public enum SFTPMessage {
     /// No response, directory gets created or an error is thrown.
     case mkdir(MkDir)
     
+    case stat(Stat)
+    case lstat(LStat)
+    case attributes(Attributes)
+    
     public var messageType: SFTPMessageType {
         switch self {
-        case .initialize(let message as SFTPMessageContent), .version(let message as SFTPMessageContent),
-             .openFile(let message as SFTPMessageContent), .closeFile(let message as SFTPMessageContent),
-             .read(let message as SFTPMessageContent), .write(let message as SFTPMessageContent),
-             .handle(let message as SFTPMessageContent), .status(let message as SFTPMessageContent),
-             .data(let message as SFTPMessageContent), .mkdir(let message as SFTPMessageContent):
+        case
+                .initialize(let message as SFTPMessageContent),
+                .version(let message as SFTPMessageContent),
+                .openFile(let message as SFTPMessageContent),
+                .closeFile(let message as SFTPMessageContent),
+                .read(let message as SFTPMessageContent),
+                .write(let message as SFTPMessageContent),
+                .handle(let message as SFTPMessageContent),
+                .status(let message as SFTPMessageContent),
+                .data(let message as SFTPMessageContent),
+                .mkdir(let message as SFTPMessageContent),
+                .stat(let message as SFTPMessageContent),
+                .lstat(let message as SFTPMessageContent),
+                .attributes(let message as SFTPMessageContent):
             return message.id
         }
     }
@@ -303,7 +350,9 @@ public enum SFTPMessage {
              .openFile(let message as SFTPMessageContent), .closeFile(let message as SFTPMessageContent),
              .read(let message as SFTPMessageContent), .write(let message as SFTPMessageContent),
              .handle(let message as SFTPMessageContent), .status(let message as SFTPMessageContent),
-             .data(let message as SFTPMessageContent), .mkdir(let message as SFTPMessageContent):
+             .data(let message as SFTPMessageContent), .mkdir(let message as SFTPMessageContent),
+             .stat(let message as SFTPMessageContent), .lstat(let message as SFTPMessageContent),
+             .attributes(let message as SFTPMessageContent):
             return "\(message.id)\(message.debugDescription)"
         }
     }
@@ -320,6 +369,9 @@ public enum SFTPMessage {
         case .status(let message): return Self.status(message.debugVariantWithoutLargeData)
         case .data(let message): return Self.data(message.debugVariantWithoutLargeData)
         case .mkdir(let message): return Self.mkdir(message.debugVariantWithoutLargeData)
+        case .stat(let message): return Self.stat(message.debugVariantWithoutLargeData)
+        case .lstat(let message): return Self.lstat(message.debugVariantWithoutLargeData)
+        case .attributes(let message): return Self.attributes(message.debugVariantWithoutLargeData)
         }
     }
     

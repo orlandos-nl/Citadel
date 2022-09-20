@@ -97,10 +97,19 @@ public final class SFTPFile {
         let sliceLength = 32_000 // https://github.com/apple/swift-nio-ssh/issues/99
         
         while data.readableBytes > 0, let slice = data.readSlice(length: Swift.min(sliceLength, data.readableBytes)) {
-            _ = try await self.client.sendRequest(.write(.init(
+            let result = try await self.client.sendRequest(.write(.init(
                 requestId: self.client.allocateRequestId(),
                 handle: self.handle, offset: offset + UInt64(data.readerIndex) - UInt64(slice.readableBytes), data: slice
             )))
+            
+            guard case .status(let status) = result else {
+                throw SFTPError.invalidResponse
+            }
+            
+            guard status.errorCode == .ok else {
+                throw SFTPError.errorStatus(status)
+            }
+            
             self.logger.debug("SFTP wrote \(slice.readableBytes) @ \(Int(offset) + data.readerIndex - slice.readableBytes) to file \(self.handle.sftpHandleDebugDescription)")
         }
 
@@ -120,8 +129,18 @@ public final class SFTPFile {
         }
         
         self.logger.debug("SFTP closing and invalidating file \(self.handle.sftpHandleDebugDescription)")
+        
         self.isActive = false
-        _ = try await self.client.sendRequest(.closeFile(.init(requestId: self.client.allocateRequestId(), handle: self.handle)))
+        let result = try await self.client.sendRequest(.closeFile(.init(requestId: self.client.allocateRequestId(), handle: self.handle)))
+        
+        guard case .status(let status) = result else {
+            throw SFTPError.invalidResponse
+        }
+        
+        guard status.errorCode == .ok else {
+            throw SFTPError.errorStatus(status)
+        }
+        
         self.logger.debug("SFTP closed file \(self.handle.sftpHandleDebugDescription)")
     }
 }

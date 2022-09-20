@@ -126,6 +126,11 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
 //    let extended_count: UInt32?
     
     public static let none = SFTPFileAttributes()
+    public static let all: SFTPFileAttributes = {
+        var attr = SFTPFileAttributes()
+        attr.permissions = 777
+        return attr
+    }()
     
     public var debugDescription: String { "unimplemented" }
 }

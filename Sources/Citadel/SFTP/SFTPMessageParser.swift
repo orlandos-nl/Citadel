@@ -166,9 +166,54 @@ struct SFTPMessageParser: ByteToMessageDecoder {
                     data: data.slice()
                 )
             )
-        case .name, .attributes, .lstat, .fstat, .setstat, .fsetstat, .opendir, .readdir, .remove, .mkdir, .rmdir,
-             .realpath, .stat, .readlink, .symlink, .extended, .extendedReply:
-            fatalError("TODO")
+        case .stat:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let path = payload.readSSHString()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .stat(
+                .init(
+                    requestId: requestId,
+                    path: path
+                )
+            )
+        case .mkdir:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let path = payload.readSSHString(),
+                let attributes = payload.readSFTPFileAttributes()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .mkdir(
+                .init(
+                    requestId: requestId,
+                    filePath: path,
+                    attributes: attributes
+                )
+            )
+        case .lstat:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let path = payload.readSSHString()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .lstat(
+                .init(
+                    requestId: requestId,
+                    path: path
+                )
+            )
+        case .name, .attributes, .fstat, .setstat, .fsetstat, .opendir, .readdir, .remove, .rmdir,
+             .realpath, .readlink, .symlink, .extended, .extendedReply:
+            print(type)
+            throw SFTPError.invalidPayload(type: type)
         }
         
         context.fireChannelRead(wrapInboundOut(message))
