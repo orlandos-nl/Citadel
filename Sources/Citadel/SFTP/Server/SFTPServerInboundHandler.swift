@@ -22,7 +22,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         switch unwrapInboundIn(data) {
         case .initialize(let message):
             guard message.version == .v3 else {
-                return context.channel.close(promise: nil)
+                return context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                    context.channel.close(promise: nil)
+                }
             }
             
             context.writeAndFlush(
@@ -34,16 +36,14 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 )),
                 promise: nil
             )
-        case .version:
-            // Client sent a server message
-            return context.channel.close(promise: nil)
         case .openFile(let command):
             let promise = context.eventLoop.makePromise(of: SFTPFileHandle.self)
             promise.completeWithTask {
                 try await self.delegate.openFile(
                     command.filePath,
                     withAttributes: command.attributes,
-                    flags: command.pFlags
+                    flags: command.pFlags,
+                    context: SSHContext()
                 )
             }
             
@@ -74,7 +74,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             }
             
             let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
-            file.close(promise: promise)
+            promise.completeWithTask {
+                try await file.close()
+            }
             files[id] = nil
             promise.futureResult.flatMap { status in
                 context.channel.writeAndFlush(
@@ -88,10 +90,40 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     )
                 )
             }.whenFailure { _ in
-                context.channel.close(promise: nil)
+                context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                    context.channel.close(promise: nil)
+                }
             }
         case .read(let command):
-            print(command)
+            var handle = command.handle
+            
+            guard
+                let id: UInt32 = handle.readInteger(),
+                handle.readableBytes == 0,
+                let file = files[id]
+            else {
+                logger.error("bad SFTP file andle")
+                return
+            }
+            
+            let promise = context.eventLoop.makePromise(of: ByteBuffer.self)
+            promise.completeWithTask {
+                try await file.read(at: command.offset, length: command.length)
+            }
+            promise.futureResult.flatMap { data in
+                context.channel.writeAndFlush(
+                    SFTPMessage.data(
+                        SFTPMessage.FileData(
+                            requestId: command.requestId,
+                            data: data
+                        )
+                    )
+                )
+            }.whenFailure { _ in
+                context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                    context.channel.close(promise: nil)
+                }
+            }
         case .write(let command):
             var handle = command.handle
             
@@ -105,7 +137,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             }
             
             let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
-            file.write(command.data, atOffset: command.offset, promise: promise)
+            promise.completeWithTask {
+                try await file.write(command.data, atOffset: command.offset)
+            }
             promise.futureResult.flatMap { status in
                 context.channel.writeAndFlush(
                     SFTPMessage.status(
@@ -118,20 +152,70 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     )
                 )
             }.whenFailure { _ in
+                context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                    context.channel.close(promise: nil)
+                }
+            }
+        case .version, .handle, .status, .data, .attributes:
+            // Client cannot send these messages
+            context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
                 context.channel.close(promise: nil)
             }
-        case .handle(let command):
-            print(command)
-        case .status(let command):
-            print(command)
-        case .data(let command):
-            print(command)
         case .mkdir(let command):
-            print(command)
+            let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
+            promise.completeWithTask {
+                try await self.delegate.createDirectory(
+                    command.filePath,
+                    withAttributes: command.attributes,
+                    context: SSHContext()
+                )
+            }
+            
+            promise.futureResult.flatMap { status in
+                context.channel.writeAndFlush(
+                    SFTPMessage.status(
+                        SFTPMessage.Status(
+                            requestId: command.requestId,
+                            errorCode: status,
+                            message: "",
+                            languageTag: "EN"
+                        )
+                    )
+                )
+            }.whenFailure { _ in
+                context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                    context.channel.close(promise: nil)
+                }
+            }
+        case .rmdir(let command):
+            let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
+            promise.completeWithTask {
+                try await self.delegate.removeDirectory(
+                    command.filePath,
+                    context: SSHContext()
+                )
+            }
+            
+            promise.futureResult.flatMap { status in
+                context.channel.writeAndFlush(
+                    SFTPMessage.status(
+                        SFTPMessage.Status(
+                            requestId: command.requestId,
+                            errorCode: status,
+                            message: "",
+                            languageTag: "EN"
+                        )
+                    )
+                )
+            }.whenFailure { _ in
+                context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                    context.channel.close(promise: nil)
+                }
+            }
         case .stat(let command):
             let promise = context.eventLoop.makePromise(of: SFTPFileAttributes.self)
             promise.completeWithTask {
-                try await self.delegate.fileAttributes(atPath: command.path)
+                try await self.delegate.fileAttributes(atPath: command.path, context: SSHContext())
             }
             
             promise.futureResult.whenSuccess { attributes in
@@ -148,7 +232,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         case .lstat(let command):
             let promise = context.eventLoop.makePromise(of: SFTPFileAttributes.self)
             promise.completeWithTask {
-                try await self.delegate.fileAttributes(atPath: command.path)
+                try await self.delegate.fileAttributes(atPath: command.path, context: SSHContext())
             }
                 
             promise.futureResult.whenSuccess { attributes in
@@ -162,8 +246,15 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     promise: nil
                 )
             }
-        case .attributes(let command):
-            print(command)
+        }
+    }
+    
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        switch event {
+        case ChannelEvent.inputClosed:
+            context.channel.close(promise: nil)
+        default:
+            context.fireUserInboundEventTriggered(event)
         }
     }
     

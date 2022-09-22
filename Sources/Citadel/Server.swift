@@ -50,8 +50,6 @@ final class SubsystemHandler: ChannelDuplexHandler {
             default:
                 context.fireUserInboundEventTriggered(event)
             }
-        case ChannelEvent.inputClosed:
-            context.channel.close(promise: nil)
         default:
             context.fireUserInboundEventTriggered(event)
         }
@@ -68,13 +66,22 @@ final class SubsystemHandler: ChannelDuplexHandler {
 
 final class CitadelServerDelegate {
     var sftp: SFTPDelegate?
+    var exec: ExecDelegate?
     
     fileprivate init() {}
     
     public func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType) -> NIOCore.EventLoopFuture<Void> {
         switch channelType {
         case .session:
-            return channel.pipeline.addHandler(SubsystemHandler(sftp: sftp))
+            var handlers = [ChannelHandler]()
+            
+            handlers.append(SubsystemHandler(sftp: sftp))
+            
+            if let exec = exec {
+                handlers.append(ExecHandler(delegate: exec))
+            }
+            
+            return channel.pipeline.addHandlers(handlers)
         case .directTCPIP, .forwardedTCPIP:
             return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
         }
@@ -95,6 +102,10 @@ public final class SSHServer {
     
     public func enableSFTP(withDelegate delegate: SFTPDelegate) {
         self.delegate.sftp = delegate
+    }
+    
+    public func enableExec(withDelegate delegate: ExecDelegate) {
+        self.delegate.exec = delegate
     }
     
     public func close() async throws {

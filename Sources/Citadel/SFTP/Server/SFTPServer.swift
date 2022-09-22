@@ -4,13 +4,18 @@ import NIOSSH
 import Logging
 
 public protocol SFTPFileHandle {
-    func write(_ data: ByteBuffer, atOffset offset: UInt64, promise: EventLoopPromise<SFTPStatusCode>)
-    func close(promise: EventLoopPromise<SFTPStatusCode>)
+    func read(at offset: UInt64, length: UInt32) async throws -> ByteBuffer
+    func write(_ data: ByteBuffer, atOffset offset: UInt64) async throws -> SFTPStatusCode
+    func close() async throws -> SFTPStatusCode
 }
 
+public struct SSHContext {}
+
 public protocol SFTPDelegate {
-    func fileAttributes(atPath path: String) async throws -> SFTPFileAttributes
-    func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags) async throws -> SFTPFileHandle
+    func fileAttributes(atPath path: String, context: SSHContext) async throws -> SFTPFileAttributes
+    func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags, context: SSHContext) async throws -> SFTPFileHandle
+    func createDirectory(_ filePath: String, withAttributes: SFTPFileAttributes, context: SSHContext) async throws -> SFTPStatusCode
+    func removeDirectory(_ filePath: String, context: SSHContext) async throws -> SFTPStatusCode
 }
 
 struct SFTPServerSubsystem {
@@ -29,7 +34,7 @@ struct SFTPServerSubsystem {
         
         return channel.pipeline.addHandlers(
             SSHChannelDataUnwrapper(),
-            SSHChannelDataWrapper(),
+            SSHOutboundChannelDataWrapper(),
             deserializeHandler,
             serializeHandler,
             sftpInboundHandler,

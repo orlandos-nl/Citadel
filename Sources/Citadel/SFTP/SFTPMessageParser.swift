@@ -196,6 +196,20 @@ struct SFTPMessageParser: ByteToMessageDecoder {
                     attributes: attributes
                 )
             )
+        case .rmdir:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let path = payload.readSSHString()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .rmdir(
+                .init(
+                    requestId: requestId,
+                    filePath: path
+                )
+            )
         case .lstat:
             guard
                 let requestId = payload.readInteger(as: UInt32.self),

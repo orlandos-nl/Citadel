@@ -34,7 +34,7 @@ public final class SFTPClient {
         
         return channel.pipeline.addHandlers(
             SSHChannelDataUnwrapper(),
-            SSHChannelDataWrapper(),
+            SSHOutboundChannelDataWrapper(),
             deserializeHandler,
             serializeHandler,
             sftpInboundHandler,
@@ -187,7 +187,6 @@ extension SSHClient {
     ///   as incoming data read from a file). Care is taken to ensure sensitive information is not included in
     ///   packet traces.
     public func openSFTP(
-        subsystem: String = "sftp",
         logger: Logger = .init(label: "nl.orlandos.citadel.sftp")
     ) async throws -> SFTPClient {
         try await eventLoop.flatSubmit {
@@ -212,11 +211,11 @@ extension SSHClient {
             return createChannel.futureResult.flatMap { channel in
                 let openSubsystem = self.eventLoop.makePromise(of: Void.self)
 
-                logger.debug("SFTP requesting subsystem with name '\(subsystem)'")
+                logger.debug("SFTP requesting subsystem")
 
                 channel.triggerUserOutboundEvent(
                     SSHChannelRequestEvent.SubsystemRequest(
-                        subsystem: subsystem,
+                        subsystem: "sftp",
                         wantReply: true
                     ),
                     promise: openSubsystem

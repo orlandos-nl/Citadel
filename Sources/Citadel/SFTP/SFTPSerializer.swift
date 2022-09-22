@@ -60,6 +60,10 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(mkdir.requestId)
             out.writeSSHString(mkdir.filePath)
             out.writeSFTPFileAttribues(mkdir.attributes)
+        case .rmdir(let rmdir):
+            out.writeInteger(SFTPMessage.RmDir.id.rawValue)
+            out.writeInteger(rmdir.requestId)
+            out.writeSSHString(rmdir.filePath)
         case .stat(let stat):
             out.writeInteger(SFTPMessage.Stat.id.rawValue)
             out.writeInteger(stat.requestId)

@@ -7,6 +7,12 @@ enum SSHChannelError: Error {
     case invalidDataType
 }
 
+enum SSHExecError: Error {
+    case commandExecFailed
+    case invalidChannelType
+    case invalidData
+}
+
 enum SFTPError: Error {
     case unknownMessage
     case invalidPayload(type: SFTPMessageType)

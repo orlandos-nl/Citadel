@@ -19,13 +19,13 @@ final class Citadel2Tests: XCTestCase {
         struct SFTPFile: SFTPFileHandle {
             let testData: TestData
             
-            func close(promise: EventLoopPromise<SFTPStatusCode>) {
-                promise.succeed(.ok)
+            func close() async throws -> SFTPStatusCode {
+                .ok
             }
             
-            func write(_ data: ByteBuffer, atOffset offset: UInt64, promise: EventLoopPromise<SFTPStatusCode>) {
+            func write(_ data: ByteBuffer, atOffset offset: UInt64) async throws -> SFTPStatusCode {
                 testData.allDataSent.writeImmutableBuffer(data)
-                promise.succeed(.ok)
+                return .ok
             }
         }
         
