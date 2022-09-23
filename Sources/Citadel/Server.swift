@@ -119,7 +119,6 @@ public final class SSHServer {
         authenticationDelegate: NIOSSHServerUserAuthenticationDelegate,
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
     ) async throws -> SSHServer {
-        let hostKey = NIOSSHPrivateKey(ed25519Key: .init())
         let delegate = CitadelServerDelegate()
         let bootstrap = ServerBootstrap(group: group)
             .childChannelInitializer { channel in
@@ -127,7 +126,7 @@ public final class SSHServer {
                     NIOSSHHandler(
                         role: .server(
                             .init(
-                                hostKeys: [hostKey],
+                                hostKeys: hostKeys,
                                 userAuthDelegate: authenticationDelegate,
                                 globalRequestDelegate: nil
                             )
