@@ -39,8 +39,6 @@ struct SFTPServerSubsystem {
             serializeHandler,
             sftpInboundHandler,
             CloseErrorHandler()
-        ).map {
-            sftpInboundHandler
-        }
+        )
     }
 }
