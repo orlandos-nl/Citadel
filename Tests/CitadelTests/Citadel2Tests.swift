@@ -7,7 +7,7 @@ import Citadel
 import NIOSSH
 
 final class Citadel2Tests: XCTestCase {
-    func testSFTP() async throws {
+    func testSFTPUpload() async throws {
         enum DelegateError: Error {
             case unsupported
         }
@@ -16,7 +16,13 @@ final class Citadel2Tests: XCTestCase {
             var allDataSent = ByteBuffer()
         }
         
+        struct TestError: Error { }
+        
         struct SFTPFile: SFTPFileHandle {
+            func read(at offset: UInt64, length: UInt32) async throws -> NIOCore.ByteBuffer {
+                throw TestError()
+            }
+            
             let testData: TestData
             
             func close() async throws -> SFTPStatusCode {
@@ -30,13 +36,21 @@ final class Citadel2Tests: XCTestCase {
         }
         
         struct SFTP: SFTPDelegate {
+            func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                throw TestError()
+            }
+            
+            func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                throw TestError()
+            }
+            
             let testData: TestData
             
-            func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags) async throws -> SFTPFileHandle {
+            func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags, context: SSHContext) async throws -> SFTPFileHandle {
                 SFTPFile(testData: testData)
             }
             
-            func fileAttributes(atPath path: String) async throws -> SFTPFileAttributes {
+            func fileAttributes(atPath path: String, context: SSHContext) async throws -> SFTPFileAttributes {
                 .all
             }
         }
