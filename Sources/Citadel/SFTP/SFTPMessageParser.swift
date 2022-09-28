@@ -224,7 +224,7 @@ struct SFTPMessageParser: ByteToMessageDecoder {
                     path: path
                 )
             )
-        case .name, .attributes, .fstat, .setstat, .fsetstat, .opendir, .readdir, .remove, .rmdir,
+        case .name, .attributes, .fstat, .setstat, .fsetstat, .opendir, .readdir, .remove,
              .realpath, .readlink, .symlink, .extended, .extendedReply:
             print(type)
             throw SFTPError.invalidPayload(type: type)
