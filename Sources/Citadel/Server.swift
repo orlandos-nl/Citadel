@@ -42,11 +42,17 @@ final class SubsystemHandler: ChannelDuplexHandler {
                     return
                 }
                 
-                _ = SFTPServerSubsystem.setupChannelHanders(
+                SFTPServerSubsystem.setupChannelHanders(
                     channel: context.channel,
                     delegate: sftp,
                     logger: .init(label: "nl.orlandos.citadel.sftp-server")
-                )
+                ).flatMap { () -> EventLoopFuture<Void> in
+                    let promise = context.eventLoop.makePromise(of: Void.self)
+                    context.channel.triggerUserOutboundEvent(ChannelSuccessEvent(), promise: promise)
+                    return promise.futureResult
+                }.whenFailure { _ in
+                    context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil)
+                }
             default:
                 context.fireUserInboundEventTriggered(event)
             }

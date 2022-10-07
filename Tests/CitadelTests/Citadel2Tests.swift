@@ -20,7 +20,7 @@ final class Citadel2Tests: XCTestCase {
         
         struct SFTPFile: SFTPFileHandle {
             func read(at offset: UInt64, length: UInt32) async throws -> NIOCore.ByteBuffer {
-                throw TestError()
+                throw DelegateError.unsupported
             }
             
             let testData: TestData
@@ -46,12 +46,20 @@ final class Citadel2Tests: XCTestCase {
             
             let testData: TestData
             
-            func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags, context: SSHContext) async throws -> SFTPFileHandle {
+            func fileAttributes(atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPFileAttributes {
+                .all
+            }
+            
+            func openFile(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, flags: Citadel.SFTPOpenFileFlags, context: Citadel.SSHContext) async throws -> Citadel.SFTPFileHandle {
                 SFTPFile(testData: testData)
             }
             
-            func fileAttributes(atPath path: String, context: SSHContext) async throws -> SFTPFileAttributes {
-                .all
+            func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                .ok
+            }
+            
+            func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                .ok
             }
         }
         
