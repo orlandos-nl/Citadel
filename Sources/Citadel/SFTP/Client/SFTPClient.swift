@@ -124,7 +124,7 @@ public final class SFTPClient {
         }
             
         self.logger.debug("SFTP opened file \(filePath), file handle \(handle.handle.sftpHandleDebugDescription)")
-        return SFTPFile(client: self, handle: handle.handle)
+        return SFTPFile(client: self, path: filePath, handle: handle.handle)
     }
     
     /// Open a file at the specified path on the SFTP server, using the given flags. If the `.create` flag is specified,

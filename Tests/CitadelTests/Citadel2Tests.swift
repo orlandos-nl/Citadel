@@ -36,12 +36,20 @@ final class Citadel2Tests: XCTestCase {
         }
         
         struct SFTP: SFTPDelegate {
-            func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+            func realPath(for canonicalUrl: String, context: Citadel.SSHContext) async throws -> [Citadel.SFTPPathComponent] {
                 throw TestError()
             }
             
-            func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+            func openDirectory(atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPDirectoryHandle {
                 throw TestError()
+            }
+            
+            func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                .ok
+            }
+            
+            func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                .ok
             }
             
             let testData: TestData
@@ -52,14 +60,6 @@ final class Citadel2Tests: XCTestCase {
             
             func openFile(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, flags: Citadel.SFTPOpenFileFlags, context: Citadel.SSHContext) async throws -> Citadel.SFTPFileHandle {
                 SFTPFile(testData: testData)
-            }
-            
-            func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
-                .ok
-            }
-            
-            func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
-                .ok
             }
         }
         
@@ -127,5 +127,20 @@ final class Citadel2Tests: XCTestCase {
         }
         
         try await server.close()
+    }
+    
+    func testRebex() async throws {
+        let client = try await SSHClient.connect(
+            host: "test.rebex.net",
+            authenticationMethod: .passwordBased(username: "demo", password: "password"),
+            hostKeyValidator: .acceptAnything(),
+            reconnect: .never
+        )
+        
+        let sftp = try await client.openSFTP()
+        
+        let file = try await sftp.openFile(filePath: "readme.txt", flags: .read)
+        var data = try await file.readAll()
+        print(data.readString(length: data.readableBytes)!)
     }
 }

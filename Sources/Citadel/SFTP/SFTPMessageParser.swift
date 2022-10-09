@@ -224,8 +224,98 @@ struct SFTPMessageParser: ByteToMessageDecoder {
                     path: path
                 )
             )
-        case .name, .attributes, .fstat, .setstat, .fsetstat, .opendir, .readdir, .remove,
-             .realpath, .readlink, .symlink, .extended, .extendedReply:
+        case .realpath:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let path = payload.readSSHString()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .realpath(
+                .init(
+                    requestId: requestId,
+                    path: path
+                )
+            )
+        case .opendir:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let handle = payload.readSSHString()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .opendir(
+                .init(
+                    requestId: requestId,
+                    handle: handle
+                )
+            )
+        case .readdir:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let handle = payload.readSSHBuffer()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .readdir(
+                .init(
+                    requestId: requestId,
+                    handle: handle
+                )
+            )
+        case .attributes:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let attributes = payload.readSFTPFileAttributes()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            message = .attributes(
+                .init(
+                    requestId: requestId,
+                    attributes: attributes
+                )
+            )
+        case .name:
+            guard
+                let requestId = payload.readInteger(as: UInt32.self),
+                let componentCount: UInt32 = payload.readInteger()
+            else {
+                throw SFTPError.invalidPayload(type: type)
+            }
+            
+            var components = [SFTPPathComponent]()
+            
+            for _ in 0..<componentCount {
+                guard
+                    let filename = payload.readSSHString(),
+                    let longname = payload.readSSHString(),
+                    let attributes = payload.readSFTPFileAttributes()
+                else {
+                    throw SFTPError.invalidPayload(type: type)
+                }
+                
+                components.append(
+                    .init(
+                        filename: filename,
+                        longname: longname,
+                        attributes: attributes
+                    )
+                )
+            }
+            
+            message = .name(
+                .init(
+                    requestId: requestId,
+                    components: components
+                )
+            )
+        case .fstat, .setstat, .fsetstat, .remove,
+             .readlink, .symlink, .extended, .extendedReply:
             print(type)
             throw SFTPError.invalidPayload(type: type)
         }

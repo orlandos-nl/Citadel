@@ -9,6 +9,10 @@ public protocol SFTPFileHandle {
     func close() async throws -> SFTPStatusCode
 }
 
+public protocol SFTPDirectoryHandle {
+    func listFiles(context: SSHContext) async throws -> [SFTPFileListing]
+}
+
 public struct SSHContext {}
 
 public protocol SFTPDelegate {
@@ -16,6 +20,8 @@ public protocol SFTPDelegate {
     func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags, context: SSHContext) async throws -> SFTPFileHandle
     func createDirectory(_ filePath: String, withAttributes: SFTPFileAttributes, context: SSHContext) async throws -> SFTPStatusCode
     func removeDirectory(_ filePath: String, context: SSHContext) async throws -> SFTPStatusCode
+    func realPath(for canonicalUrl: String, context: SSHContext) async throws -> [SFTPPathComponent]
+    func openDirectory(atPath path: String, context: SSHContext) async throws -> SFTPDirectoryHandle
 }
 
 struct SFTPServerSubsystem {

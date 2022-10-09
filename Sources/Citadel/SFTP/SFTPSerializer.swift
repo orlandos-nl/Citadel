@@ -76,6 +76,28 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(SFTPMessage.Attributes.id.rawValue)
             out.writeInteger(fstat.requestId)
             out.writeSFTPFileAttribues(fstat.attributes)
+        case .realpath(let realPath):
+            out.writeInteger(SFTPMessage.RealPath.id.rawValue)
+            out.writeInteger(realPath.requestId)
+            out.writeSSHString(realPath.path)
+        case .name(let name):
+            out.writeInteger(SFTPMessage.Name.id.rawValue)
+            out.writeInteger(name.requestId)
+            out.writeInteger(name.count)
+            
+            for component in name.components {
+                out.writeSSHString(component.filename)
+                out.writeSSHString(component.longname)
+                out.writeSFTPFileAttribues(component.attributes)
+            }
+        case .opendir(let opendir):
+            out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
+            out.writeInteger(opendir.requestId)
+            out.writeSSHString(opendir.handle)
+        case .readdir(var readdir):
+            out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
+            out.writeInteger(readdir.requestId)
+            out.writeSSHString(&readdir.handle)
         }
         
         let length = out.writerIndex - lengthIndex - 4
