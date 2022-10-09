@@ -53,7 +53,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 )
             }
             
-            promise.futureResult.map { file in
+            promise.futureResult.map { file -> SFTPMessage in
                 let handle = self.currentHandleID
                 self.files[handle] = file
                 self.currentHandleID &+= 1
