@@ -98,6 +98,28 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
             out.writeInteger(readdir.requestId)
             out.writeSSHString(&readdir.handle)
+        case .fstat(var fstat):
+            out.writeInteger(SFTPMessage.FileStat.id.rawValue)
+            out.writeInteger(fstat.requestId)
+            out.writeSSHString(&fstat.handle)
+        case .remove(let remove):
+            out.writeInteger(SFTPMessage.Remove.id.rawValue)
+            out.writeSSHString(remove.filename)
+        case .fsetstat(var fsetstat):
+            out.writeInteger(SFTPMessage.FileSetStat.id.rawValue)
+            out.writeSSHString(&fsetstat.handle)
+            out.writeSFTPFileAttribues(fsetstat.attributes)
+        case .setstat(let setstat):
+            out.writeInteger(SFTPMessage.SetStat.id.rawValue)
+            out.writeSSHString(setstat.path)
+            out.writeSFTPFileAttribues(setstat.attributes)
+        case .symlink(let symlink):
+            out.writeInteger(SFTPMessage.Symlink.id.rawValue)
+            out.writeSSHString(symlink.linkPath)
+            out.writeSSHString(symlink.targetPath)
+        case .readlink(let readlink):
+            out.writeInteger(SFTPMessage.Symlink.id.rawValue)
+            out.writeSSHString(readlink.path)
         }
         
         let length = out.writerIndex - lengthIndex - 4

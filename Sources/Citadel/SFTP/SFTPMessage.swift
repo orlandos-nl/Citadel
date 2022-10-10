@@ -28,6 +28,7 @@ enum SFTPRequest: CustomDebugStringConvertible {
     case write(SFTPMessage.WriteFile)
     case mkdir(SFTPMessage.MkDir)
     case stat(SFTPMessage.Stat)
+    case fstat(SFTPMessage.FileStat)
     
     var requestId: UInt32 {
         get {
@@ -43,6 +44,8 @@ enum SFTPRequest: CustomDebugStringConvertible {
             case .mkdir(let message):
                 return message.requestId
             case .stat(let message):
+                return message.requestId
+            case .fstat(let message):
                 return message.requestId
             }
         }
@@ -62,6 +65,8 @@ enum SFTPRequest: CustomDebugStringConvertible {
             return .mkdir(message)
         case .stat(let message):
             return .stat(message)
+        case .fstat(let message):
+            return .fstat(message)
         }
     }
     
@@ -73,6 +78,7 @@ enum SFTPRequest: CustomDebugStringConvertible {
         case .write(let message): return message.debugDescription
         case .mkdir(let message): return message.debugDescription
         case .stat(let message): return message.debugDescription
+        case .fstat(let message): return message.debugDescription
         }
     }
 }
@@ -135,7 +141,7 @@ enum SFTPResponse {
             self = .name(message)
         case .attributes(let message):
             self = .attributes(message)
-        case .realpath, .openFile, .closeFile, .read, .write, .initialize, .version, .stat, .lstat, .rmdir, .opendir, .readdir:
+        case .realpath, .openFile, .fstat, .closeFile, .read, .write, .initialize, .version, .stat, .lstat, .rmdir, .opendir, .readdir, .remove, .fsetstat, .setstat, .symlink, .readlink:
             return nil
         }
     }
@@ -250,6 +256,69 @@ public enum SFTPMessage {
         public var handle: ByteBuffer
         
         public var debugDescription: String { "{\(self.requestId)}(\(self.handle.sftpHandleDebugDescription))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct FileStat: SFTPMessageContent {
+        public static let id = SFTPMessageType.fstat
+        
+        public let requestId: UInt32
+        public var handle: ByteBuffer
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.handle.sftpHandleDebugDescription))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct Remove: SFTPMessageContent {
+        public static let id = SFTPMessageType.remove
+        
+        public let requestId: UInt32
+        public var filename: String
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.filename))" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct FileSetStat: SFTPMessageContent {
+        public static let id = SFTPMessageType.fsetstat
+        
+        public let requestId: UInt32
+        public var handle: ByteBuffer
+        public var attributes: SFTPFileAttributes
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.handle),\(self.attributes)" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct SetStat: SFTPMessageContent {
+        public static let id = SFTPMessageType.setstat
+        
+        public let requestId: UInt32
+        public var path: String
+        public var attributes: SFTPFileAttributes
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.path),\(self.attributes)" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct Symlink: SFTPMessageContent {
+        public static let id = SFTPMessageType.symlink
+        
+        public let requestId: UInt32
+        public var linkPath: String
+        public var targetPath: String
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.linkPath),\(self.targetPath)" }
+        fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+    
+    public struct Readlink: SFTPMessageContent {
+        public static let id = SFTPMessageType.symlink
+        
+        public let requestId: UInt32
+        public var path: String
+        
+        public var debugDescription: String { "{\(self.requestId)}(\(self.path)" }
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
@@ -422,6 +491,12 @@ public enum SFTPMessage {
     case rmdir(RmDir)
     case opendir(OpenDir)
     case stat(Stat)
+    case fstat(FileStat)
+    case remove(Remove)
+    case fsetstat(FileSetStat)
+    case setstat(SetStat)
+    case symlink(Symlink)
+    case readlink(Readlink)
     case lstat(LStat)
     case realpath(RealPath)
     case name(Name)
@@ -442,13 +517,19 @@ public enum SFTPMessage {
                 .data(let message as SFTPMessageContent),
                 .mkdir(let message as SFTPMessageContent),
                 .stat(let message as SFTPMessageContent),
+                .fstat(let message as SFTPMessageContent),
                 .lstat(let message as SFTPMessageContent),
                 .attributes(let message as SFTPMessageContent),
                 .rmdir(let message as SFTPMessageContent),
                 .realpath(let message as SFTPMessageContent),
                 .name(let message as SFTPMessageContent),
                 .opendir(let message as SFTPMessageContent),
-                .readdir(let message as SFTPMessageContent):
+                .readdir(let message as SFTPMessageContent),
+                .remove(let message as SFTPMessageContent),
+                .fsetstat(let message as SFTPMessageContent),
+                .setstat(let message as SFTPMessageContent),
+                .symlink(let message as SFTPMessageContent),
+                .readlink(let message as SFTPMessageContent):
             return message.id
         }
     }
@@ -467,13 +548,19 @@ public enum SFTPMessage {
                 .data(let message as SFTPMessageContent),
                 .mkdir(let message as SFTPMessageContent),
                 .stat(let message as SFTPMessageContent),
+                .fstat(let message as SFTPMessageContent),
                 .lstat(let message as SFTPMessageContent),
                 .attributes(let message as SFTPMessageContent),
                 .rmdir(let message as SFTPMessageContent),
                 .realpath(let message as SFTPMessageContent),
                 .name(let message as SFTPMessageContent),
                 .opendir(let message as SFTPMessageContent),
-                .readdir(let message as SFTPMessageContent):
+                .readdir(let message as SFTPMessageContent),
+                .remove(let message as SFTPMessageContent),
+                .fsetstat(let message as SFTPMessageContent),
+                .setstat(let message as SFTPMessageContent),
+                .symlink(let message as SFTPMessageContent),
+                .readlink(let message as SFTPMessageContent):
             return "\(message.id)\(message.debugDescription)"
         }
     }
@@ -491,6 +578,7 @@ public enum SFTPMessage {
         case .data(let message): return Self.data(message.debugVariantWithoutLargeData)
         case .mkdir(let message): return Self.mkdir(message.debugVariantWithoutLargeData)
         case .stat(let message): return Self.stat(message.debugVariantWithoutLargeData)
+        case .fstat(let message): return Self.fstat(message.debugVariantWithoutLargeData)
         case .lstat(let message): return Self.lstat(message.debugVariantWithoutLargeData)
         case .attributes(let message): return Self.attributes(message.debugVariantWithoutLargeData)
         case .rmdir(let message): return Self.rmdir(message.debugVariantWithoutLargeData)
@@ -498,6 +586,11 @@ public enum SFTPMessage {
         case .name(let message): return Self.name(message.debugVariantWithoutLargeData)
         case .opendir(let message): return Self.opendir(message.debugVariantWithoutLargeData)
         case .readdir(let message): return Self.readdir(message.debugVariantWithoutLargeData)
+        case .remove(let message): return Self.remove(message.debugVariantWithoutLargeData)
+        case .fsetstat(let message): return Self.fsetstat(message.debugVariantWithoutLargeData)
+        case .setstat(let message): return Self.setstat(message.debugVariantWithoutLargeData)
+        case .symlink(let message): return Self.symlink(message.debugVariantWithoutLargeData)
+        case .readlink(let message): return Self.readlink(message.debugVariantWithoutLargeData)
         }
     }
     

@@ -19,6 +19,14 @@ final class Citadel2Tests: XCTestCase {
         struct TestError: Error { }
         
         struct SFTPFile: SFTPFileHandle {
+            func readFileAttributes() async throws -> Citadel.SFTPFileAttributes {
+                return SFTPFileAttributes(size: .init(testData.allDataSent.readableBytes))
+            }
+            
+            func setFileAttributes(to attributes: Citadel.SFTPFileAttributes) async throws {
+                throw DelegateError.unsupported
+            }
+            
             func read(at offset: UInt64, length: UInt32) async throws -> NIOCore.ByteBuffer {
                 throw DelegateError.unsupported
             }
@@ -36,6 +44,22 @@ final class Citadel2Tests: XCTestCase {
         }
         
         struct SFTP: SFTPDelegate {
+            func removeFile(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                .permissionDenied
+            }
+            
+            func setFileAttributes(to attributes: Citadel.SFTPFileAttributes, atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                throw DelegateError.unsupported
+            }
+            
+            func addSymlink(linkPath: String, targetPath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                throw DelegateError.unsupported
+            }
+            
+            func readSymlink(atPath path: String, context: Citadel.SSHContext) async throws -> [Citadel.SFTPPathComponent] {
+                throw DelegateError.unsupported
+            }
+            
             func realPath(for canonicalUrl: String, context: Citadel.SSHContext) async throws -> [Citadel.SFTPPathComponent] {
                 throw TestError()
             }
@@ -45,11 +69,11 @@ final class Citadel2Tests: XCTestCase {
             }
             
             func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
-                .ok
+                .permissionDenied
             }
             
             func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
-                .ok
+                .permissionDenied
             }
             
             let testData: TestData
