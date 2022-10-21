@@ -508,42 +508,42 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     @inline(never)
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         switch unwrapInboundIn(data) {
-        case .initialize(let command as SFTPMessage.Initialize):
-            self.initialize(command: command, context: context)
-        case .openFile(let command as SFTPMessage.OpenFile):
-            self.openFile(command: command, context: context)
-        case .closeFile(let command as SFTPMessage.CloseFile):
-            self.closeFile(command: command, context: context)
-        case .read(let command as SFTPMessage.ReadFile):
-            self.readFile(command: command, context: context)
-        case .write(let command as SFTPMessage.WriteFile):
-            self.writeFile(command: command, context: context)
-        case .mkdir(let command as SFTPMessage.MkDir):
-            self.createDir(command: command, context: context)
-        case .opendir(let command as SFTPMessage.OpenDir):
-            self.openDir(command: command, context: context)
-        case .rmdir(let command as SFTPMessage.RmDir):
-            self.removeDir(command: command, context: context)
-        case .stat(let command as SFTPMessage.Stat):
-            self.stat(command: command, context: context)
-        case .lstat(let command as SFTPMessage.LStat):
-            self.lstat(command: command, context: context)
-        case .realpath(let command as SFTPMessage.RealPath):
-            self.realPath(command: command, context: context)
-        case .readdir(let command as SFTPMessage.ReadDir):
-            self.readDir(command: command, context: context)
-        case .fstat(let command as SFTPMessage.FileStat):
-            self.fileStat(command: command, context: context)
-        case .remove(let command as SFTPMessage.Remove):
-            self.removeFile(command: command, context: context)
-        case .fsetstat(let command as SFTPMessage.FileSetStat):
-            self.fileSetStat(command: command, context: context)
-        case .setstat(let command as SFTPMessage.SetStat):
-            self.setStat(command: command, context: context)
-        case .symlink(let command as SFTPMessage.Symlink):
-            self.symlink(command: command, context: context)
-        case .readlink(let command as SFTPMessage.Readlink):
-            self.readlink(command: command, context: context)
+        case .initialize(let command):
+            initialize(command: command, context: context)
+        case .openFile(let command):
+            openFile(command: command, context: context)
+        case .closeFile(let command):
+            closeFile(command: command, context: context)
+        case .read(let command):
+            readFile(command: command, context: context)
+        case .write(let command):
+            writeFile(command: command, context: context)
+        case .mkdir(let command):
+            createDir(command: command, context: context)
+        case .opendir(let command):
+            openDir(command: command, context: context)
+        case .rmdir(let command):
+            removeDir(command: command, context: context)
+        case .stat(let command):
+            stat(command: command, context: context)
+        case .lstat(let command):
+            lstat(command: command, context: context)
+        case .realpath(let command):
+            realPath(command: command, context: context)
+        case .readdir(let command):
+            readDir(command: command, context: context)
+        case .fstat(let command):
+            fileStat(command: command, context: context)
+        case .remove(let command):
+            removeFile(command: command, context: context)
+        case .fsetstat(let command):
+            fileSetStat(command: command, context: context)
+        case .setstat(let command):
+            setStat(command: command, context: context)
+        case .symlink(let command):
+            symlink(command: command, context: context)
+        case .readlink(let command):
+            readlink(command: command, context: context)
         case .version, .handle, .status, .data, .attributes, .name:
             // Client cannot send these messages
             context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
@@ -553,7 +553,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     }
     
     @inline(never)
-    func withFileHandle<T>(_ handle: ByteBuffer, context: ChannelHandlerContext, perform: @Sendable @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
+    func withFileHandle<T>(_ handle: ByteBuffer, context: ChannelHandlerContext, perform: @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
         guard
             let id: UInt32 = handle.getInteger(at: 0),
             let file = files[id]
