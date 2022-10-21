@@ -118,8 +118,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 logger.error("unknown SFTP handle")
             }
         case .read(let command):
-            var handle = command.handle
-            withFileHandle(&handle, context: context) { file -> ByteBuffer in
+            withFileHandle(command.handle, context: context) { file -> ByteBuffer in
                 try await file.read(at: command.offset, length: command.length)
             }.flatMap { data -> EventLoopFuture<Void> in
                 context.channel.writeAndFlush(
@@ -136,8 +135,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 }
             }
         case .write(let command):
-            var handle = command.handle
-            withFileHandle(&handle, context: context) { file -> SFTPStatusCode in
+            withFileHandle(command.handle, context: context) { file -> SFTPStatusCode in
                 try await file.write(command.data, atOffset: command.offset)
             }.flatMap { status -> EventLoopFuture<Void> in
                 context.channel.writeAndFlush(
@@ -326,8 +324,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 )
             }
         case .fstat(let fstat):
-            var handle = fstat.handle
-            withFileHandle(&handle, context: context) { file in
+            withFileHandle(fstat.handle, context: context) { file in
                 try await file.readFileAttributes()
             }.flatMap { attributes -> EventLoopFuture<Void> in
                 context.channel.writeAndFlush(
@@ -368,8 +365,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 )
             }
         case .fsetstat(let fsetstat):
-            var handle = fsetstat.handle
-            withFileHandle(&handle, context: context) { handle in
+            withFileHandle(fsetstat.handle, context: context) { handle in
                 try await handle.setFileAttributes(to: fsetstat.attributes)
             }.flatMap { () -> EventLoopFuture<Void> in
                 context.channel.writeAndFlush(
@@ -473,13 +469,12 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    func withFileHandle<T>(_ handle: inout ByteBuffer, context: ChannelHandlerContext, perform: @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
+    private func withFileHandle<T>(_ handle: ByteBuffer, context: ChannelHandlerContext, perform: @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
         guard
-            let id: UInt32 = handle.readInteger(),
-            handle.readableBytes == 0,
+            let id: UInt32 = handle.getInteger(at: 0),
             let file = files[id]
         else {
-            logger.error("bad SFTP file andle")
+            logger.error("bad SFTP file handle")
             return context.eventLoop.makeFailedFuture(SFTPError.fileHandleInvalid)
         }
         
