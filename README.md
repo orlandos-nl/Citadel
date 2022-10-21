@@ -6,6 +6,8 @@ It features the following helpers:
 
 - [x] TCP-IP forwarding child channels
 - [x] Basic SFTP Client
+- [x] SFTP Server
+- [x] SSH Exec Command Server
 - [x] TTY support
 - [x] SSH Key format parsing
 
