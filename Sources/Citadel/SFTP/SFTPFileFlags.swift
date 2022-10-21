@@ -133,6 +133,6 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
         return attr
     }()
     
-    public var debugDescription: String { "unimplemented" }
+    public var debugDescription: String { "{perm: \(permissions), size: \(size), uidgid: \(uidgid)}" }
 }
 

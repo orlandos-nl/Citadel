@@ -95,6 +95,54 @@ public final class SFTPClient {
         }.get()
     }
     
+    public func listDirectory(
+        atPath path: String
+    ) async throws -> [SFTPMessage.Name] {
+//        var path = path
+//        var oldPath: String
+//
+//        repeat {
+//            oldPath = path
+//            guard case .name(let realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
+//                self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+//                throw SFTPError.invalidResponse
+//            }
+//
+//            path = realpath.path
+//            print(path, oldPath)
+//        } while path != oldPath
+        
+        guard case .handle(let handle) = try await sendRequest(.opendir(.init(requestId: self.allocateRequestId(), handle: path))) else {
+            self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+        
+        var names = [SFTPMessage.Name]()
+        var response = try await sendRequest(
+            .readdir(
+                .init(
+                    requestId: self.allocateRequestId(),
+                    handle: handle.handle
+                )
+            )
+        )
+        
+        while case .name(let name) = response {
+            names.append(name)
+            response = try await sendRequest(
+                .readdir(
+                    .init(
+                        requestId: self.allocateRequestId(),
+                        handle: handle.handle
+                    )
+                )
+            )
+        }
+        
+        print(names)
+        return names
+    }
+    
     /// Open a file at the specified path on the SFTP server, using the given flags and attributes.  If the `.create`
     /// flag is specified, the given attributes are applied to the created file. If successful, an `SFTPFile` is
     /// returned which can be used to perform various operations on the open file. The file object must be explicitly

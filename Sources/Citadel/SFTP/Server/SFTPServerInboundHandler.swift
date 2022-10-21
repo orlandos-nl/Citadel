@@ -117,8 +117,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             } else {
                 logger.error("unknown SFTP handle")
             }
-        case .read(var command):
-            withFileHandle(&command.handle, context: context) { file in
+        case .read(let command):
+            var handle = command.handle
+            withFileHandle(&handle, context: context) { file in
                 try await file.read(at: command.offset, length: command.length)
             }.flatMap { data in
                 context.channel.writeAndFlush(
@@ -134,8 +135,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     context.channel.close(promise: nil)
                 }
             }
-        case .write(var command):
-            withFileHandle(&command.handle, context: context) { file in
+        case .write(let command):
+            var handle = command.handle
+            withFileHandle(&handle, context: context) { file -> SFTPStatusCode in
                 try await file.write(command.data, atOffset: command.offset)
             }.flatMap { status in
                 context.channel.writeAndFlush(
@@ -325,8 +327,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     )
                 )
             }
-        case .fstat(var fstat):
-            withFileHandle(&fstat.handle, context: context) { file in
+        case .fstat(let fstat):
+            var handle = fstat.handle
+            withFileHandle(&handle, context: context) { file in
                 try await file.readFileAttributes()
             }.flatMap { attributes in
                 context.channel.writeAndFlush(
@@ -366,8 +369,9 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     )
                 )
             }
-        case .fsetstat(var fsetstat):
-            withFileHandle(&fsetstat.handle, context: context) { handle in
+        case .fsetstat(let fsetstat):
+            var handle = fsetstat.handle
+            withFileHandle(&handle, context: context) { handle in
                 try await handle.setFileAttributes(to: fsetstat.attributes)
             }.flatMap {
                 context.channel.writeAndFlush(

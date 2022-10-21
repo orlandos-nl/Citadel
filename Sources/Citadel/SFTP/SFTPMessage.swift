@@ -29,11 +29,16 @@ enum SFTPRequest: CustomDebugStringConvertible {
     case mkdir(SFTPMessage.MkDir)
     case stat(SFTPMessage.Stat)
     case fstat(SFTPMessage.FileStat)
+    case readdir(SFTPMessage.ReadDir)
+    case opendir(SFTPMessage.OpenDir)
+    case realpath(SFTPMessage.RealPath)
     
     var requestId: UInt32 {
         get {
             switch self {
             case .openFile(let message):
+                return message.requestId
+            case .opendir(let message):
                 return message.requestId
             case .closeFile(let message):
                 return message.requestId
@@ -47,6 +52,10 @@ enum SFTPRequest: CustomDebugStringConvertible {
                 return message.requestId
             case .fstat(let message):
                 return message.requestId
+            case .readdir(let message):
+                return message.requestId
+            case .realpath(let message):
+                return message.requestId
             }
         }
     }
@@ -55,6 +64,8 @@ enum SFTPRequest: CustomDebugStringConvertible {
         switch self {
         case .openFile(let message):
             return .openFile(message)
+        case .opendir(let message):
+            return .opendir(message)
         case .closeFile(let message):
             return .closeFile(message)
         case .read(let message):
@@ -67,6 +78,10 @@ enum SFTPRequest: CustomDebugStringConvertible {
             return .stat(message)
         case .fstat(let message):
             return .fstat(message)
+        case .readdir(let message):
+            return .readdir(message)
+        case .realpath(let message):
+            return .realpath(message)
         }
     }
     
@@ -79,6 +94,9 @@ enum SFTPRequest: CustomDebugStringConvertible {
         case .mkdir(let message): return message.debugDescription
         case .stat(let message): return message.debugDescription
         case .fstat(let message): return message.debugDescription
+        case .readdir(let message): return message.debugDescription
+        case .opendir(let message): return message.debugDescription
+        case .realpath(let message): return message.debugDescription
         }
     }
 }
@@ -408,6 +426,11 @@ public enum SFTPMessage {
         public let requestId: UInt32
         public var count: UInt32 { UInt32(components.count) }
         public let components: [SFTPPathComponent]
+        
+        var path: String {
+            print(components)
+            return components.map(\.filename).joined(separator: "/")
+        }
         
         public var debugDescription: String { "{\(self.requestId)}('\(self.count)', components)" }
         

@@ -26,11 +26,17 @@ final class SFTPClientInboundHandler: ChannelInboundHandler {
             }
         } else if let response = SFTPResponse(message: message) {
             if let promise = responses.responses.removeValue(forKey: response.requestId) {
-                if case .status(let status) = response, status.errorCode != .ok {
-                    // logged as debug rather than warning because there are many cases in which a protocol error is
-                    // not only nonfatal, but even expected (such as SSH_FX_EOF).
-                    self.logger.debug("SFTP error received: \(status)")
-                    promise.fail(status)
+                if case .status(let status) = response {
+                    switch status.errorCode {
+                    case .eof, .ok:
+                        promise.succeed(response)
+                    default:
+                        // logged as debug rather than warning because there are many cases in which a protocol error is
+                        // not only nonfatal, but even expected (such as SSH_FX_EOF).
+                        self.logger.debug("SFTP error received: \(status)")
+                        print(status)
+                        promise.fail(status)
+                    }
                 } else {
                     promise.succeed(response)
                 }
