@@ -24,7 +24,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         self.initialized = eventLoop.makePromise()
     }
     
-    @inline(never)
     func initialize(command: SFTPMessage.Initialize, context: ChannelHandlerContext) {
         guard command.version == .v3 else {
             return context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
@@ -43,7 +42,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         )
     }
     
-    @inline(never)
     func openFile(command: SFTPMessage.OpenFile, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPFileHandle.self)
         promise.completeWithTask {
@@ -71,7 +69,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func closeFile(command: SFTPMessage.CloseFile, context: ChannelHandlerContext) {
         guard let id: UInt32 = command.handle.getInteger(at: 0) else {
             logger.error("bad SFTP file handle")
@@ -119,7 +116,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func readFile(command: SFTPMessage.ReadFile, context: ChannelHandlerContext) {
         withFileHandle(command.handle, context: context) { file -> ByteBuffer in
             try await file.read(at: command.offset, length: command.length)
@@ -139,7 +135,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func writeFile(command: SFTPMessage.WriteFile, context: ChannelHandlerContext) {
         withFileHandle(command.handle, context: context) { file -> SFTPStatusCode in
             try await file.write(command.data, atOffset: command.offset)
@@ -161,7 +156,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func createDir(command: SFTPMessage.MkDir, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
         promise.completeWithTask {
@@ -190,7 +184,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func removeDir(command: SFTPMessage.RmDir, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
         promise.completeWithTask {
@@ -218,7 +211,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func stat(command: SFTPMessage.Stat, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPFileAttributes.self)
         promise.completeWithTask {
@@ -237,7 +229,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func lstat(command: SFTPMessage.LStat, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPFileAttributes.self)
         promise.completeWithTask {
@@ -256,7 +247,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func realPath(command: SFTPMessage.RealPath, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: [SFTPPathComponent].self)
         promise.completeWithTask {
@@ -275,7 +265,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func openDir(command: SFTPMessage.OpenDir, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: (SFTPDirectoryHandle, SFTPDirectoryHandleIterator).self)
         promise.completeWithTask {
@@ -302,7 +291,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func readDir(command: SFTPMessage.ReadDir, context: ChannelHandlerContext) {
         guard
             let id: UInt32 = command.handle.getInteger(at: 0),
@@ -349,7 +337,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func fileStat(command: SFTPMessage.FileStat, context: ChannelHandlerContext) {
         withFileHandle(command.handle, context: context) { file in
             try await file.readFileAttributes()
@@ -376,7 +363,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func removeFile(command: SFTPMessage.Remove, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
         promise.completeWithTask {
@@ -396,7 +382,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func fileSetStat(command: SFTPMessage.FileSetStat, context: ChannelHandlerContext) {
         withFileHandle(command.handle, context: context) { handle in
             try await handle.setFileAttributes(to: command.attributes)
@@ -425,7 +410,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func setStat(command: SFTPMessage.SetStat, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
         promise.completeWithTask {
@@ -449,7 +433,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func symlink(command: SFTPMessage.Symlink, context:ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
         promise.completeWithTask {
@@ -473,7 +456,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func readlink(command: SFTPMessage.Readlink, context:ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: [SFTPPathComponent].self)
         promise.completeWithTask {
@@ -505,7 +487,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         switch unwrapInboundIn(data) {
         case .initialize(let command):
@@ -552,7 +533,6 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    @inline(never)
     func withFileHandle<T>(_ handle: ByteBuffer, context: ChannelHandlerContext, perform: @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
         guard
             let id: UInt32 = handle.getInteger(at: 0),
