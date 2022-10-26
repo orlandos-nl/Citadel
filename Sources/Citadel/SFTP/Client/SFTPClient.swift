@@ -98,19 +98,19 @@ public final class SFTPClient {
     public func listDirectory(
         atPath path: String
     ) async throws -> [SFTPMessage.Name] {
-//        var path = path
-//        var oldPath: String
-//
-//        repeat {
-//            oldPath = path
-//            guard case .name(let realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
-//                self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
-//                throw SFTPError.invalidResponse
-//            }
-//
-//            path = realpath.path
-//            print(path, oldPath)
-//        } while path != oldPath
+        var path = path
+        var oldPath: String
+
+        repeat {
+            oldPath = path
+            guard case .name(let realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
+                self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+                throw SFTPError.invalidResponse
+            }
+
+            path = realpath.path
+            print(path, oldPath)
+        } while path != oldPath
         
         guard case .handle(let handle) = try await sendRequest(.opendir(.init(requestId: self.allocateRequestId(), handle: path))) else {
             self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
@@ -141,6 +141,24 @@ public final class SFTPClient {
         
         print(names)
         return names
+    }
+    
+    public func getAttributes(
+        at filePath: String
+    ) async throws -> SFTPFileAttributes {
+        self.logger.info("SFTP requesting file attributes at '\(filePath)'")
+        
+        let response = try await sendRequest(.stat(.init(
+            requestId: allocateRequestId(),
+            path: filePath
+        )))
+        
+        guard case .attributes(let attributes) = response else {
+            self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+        
+        return attributes.attributes
     }
     
     /// Open a file at the specified path on the SFTP server, using the given flags and attributes.  If the `.create`

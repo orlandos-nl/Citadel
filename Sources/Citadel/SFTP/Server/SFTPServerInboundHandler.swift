@@ -533,7 +533,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         }
     }
     
-    func withFileHandle<T>(_ handle: ByteBuffer, context: ChannelHandlerContext, perform: @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
+    func withFileHandle<T>(_ handle: ByteBuffer, context: ChannelHandlerContext, perform: @Sendable @escaping (SFTPFileHandle) async throws -> T) -> EventLoopFuture<T> {
         guard
             let id: UInt32 = handle.getInteger(at: 0),
             let file = files[id]

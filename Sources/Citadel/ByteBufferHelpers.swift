@@ -14,7 +14,7 @@ extension ByteBuffer {
         return Date(timeIntervalSince1970: TimeInterval(date))
     }
     
-    mutating func writeSFTPFileAttribues(_ attributes: SFTPFileAttributes) {
+    mutating func writeSFTPFileAttributes(_ attributes: SFTPFileAttributes) {
         writeInteger(attributes.flags.rawValue)
         
         if let size = attributes.size {

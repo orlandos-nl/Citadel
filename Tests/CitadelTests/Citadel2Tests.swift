@@ -162,7 +162,9 @@ final class Citadel2Tests: XCTestCase {
         )
         
         let sftp = try await client.openSFTP()
-        try await sftp.listDirectory(atPath: "")
+        print(try await sftp.listDirectory(atPath: ""))
+        
+        print(try await sftp.getAttributes(at: "pub"))
         
         let file = try await sftp.openFile(filePath: "readme.txt", flags: .read)
         var data = try await file.readAll()

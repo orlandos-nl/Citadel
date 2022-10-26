@@ -24,7 +24,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(openFile.requestId)
             out.writeSSHString(openFile.filePath)
             out.writeInteger(openFile.pFlags.rawValue)
-            out.writeSFTPFileAttribues(openFile.attributes)
+            out.writeSFTPFileAttributes(openFile.attributes)
         case .closeFile(var closeFile):
             out.writeInteger(SFTPMessage.CloseFile.id.rawValue)
             out.writeInteger(closeFile.requestId)
@@ -59,7 +59,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(SFTPMessage.MkDir.id.rawValue)
             out.writeInteger(mkdir.requestId)
             out.writeSSHString(mkdir.filePath)
-            out.writeSFTPFileAttribues(mkdir.attributes)
+            out.writeSFTPFileAttributes(mkdir.attributes)
         case .rmdir(let rmdir):
             out.writeInteger(SFTPMessage.RmDir.id.rawValue)
             out.writeInteger(rmdir.requestId)
@@ -75,7 +75,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
         case .attributes(let fstat):
             out.writeInteger(SFTPMessage.Attributes.id.rawValue)
             out.writeInteger(fstat.requestId)
-            out.writeSFTPFileAttribues(fstat.attributes)
+            out.writeSFTPFileAttributes(fstat.attributes)
         case .realpath(let realPath):
             out.writeInteger(SFTPMessage.RealPath.id.rawValue)
             out.writeInteger(realPath.requestId)
@@ -88,7 +88,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             for component in name.components {
                 out.writeSSHString(component.filename)
                 out.writeSSHString(component.longname)
-                out.writeSFTPFileAttribues(component.attributes)
+                out.writeSFTPFileAttributes(component.attributes)
             }
         case .opendir(let opendir):
             out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
@@ -108,11 +108,11 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
         case .fsetstat(var fsetstat):
             out.writeInteger(SFTPMessage.FileSetStat.id.rawValue)
             out.writeSSHString(&fsetstat.handle)
-            out.writeSFTPFileAttribues(fsetstat.attributes)
+            out.writeSFTPFileAttributes(fsetstat.attributes)
         case .setstat(let setstat):
             out.writeInteger(SFTPMessage.SetStat.id.rawValue)
             out.writeSSHString(setstat.path)
-            out.writeSFTPFileAttribues(setstat.attributes)
+            out.writeSFTPFileAttributes(setstat.attributes)
         case .symlink(let symlink):
             out.writeInteger(SFTPMessage.Symlink.id.rawValue)
             out.writeSSHString(symlink.linkPath)

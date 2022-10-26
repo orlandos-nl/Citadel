@@ -98,6 +98,10 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
             flags.insert(.size)
         }
         
+        if uidgid != nil {
+            flags.insert(.uidgid)
+        }
+        
         if permissions != nil {
             flags.insert(.permissions)
         }
