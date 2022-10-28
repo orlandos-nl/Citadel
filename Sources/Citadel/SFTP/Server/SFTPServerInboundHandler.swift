@@ -296,7 +296,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             let id: UInt32 = command.handle.getInteger(at: 0),
             var listing = directoryListing[id]
         else {
-            logger.error("bad SFTP directory andle")
+            logger.error("bad SFTP directory handle")
             return
         }
         

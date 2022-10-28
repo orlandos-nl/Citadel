@@ -120,7 +120,6 @@ final class ExecHandler: ChannelDuplexHandler {
                 buffer.writeContiguousBytes(data)
                 channel.write(SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)), promise: nil)
             } catch {
-                print(error)
                 channel.close(promise: nil)
             }
         }

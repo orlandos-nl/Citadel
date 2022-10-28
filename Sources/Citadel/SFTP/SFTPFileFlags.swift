@@ -133,7 +133,7 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
     public static let none = SFTPFileAttributes()
     public static let all: SFTPFileAttributes = {
         var attr = SFTPFileAttributes()
-        attr.permissions = 777
+//        attr.permissions = 777
         return attr
     }()
     

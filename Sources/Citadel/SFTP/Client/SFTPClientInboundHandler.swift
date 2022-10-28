@@ -34,7 +34,6 @@ final class SFTPClientInboundHandler: ChannelInboundHandler {
                         // logged as debug rather than warning because there are many cases in which a protocol error is
                         // not only nonfatal, but even expected (such as SSH_FX_EOF).
                         self.logger.debug("SFTP error received: \(status)")
-                        print(status)
                         promise.fail(status)
                     }
                 } else {

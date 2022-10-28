@@ -109,7 +109,6 @@ public final class SFTPClient {
             }
 
             path = realpath.path
-            print(path, oldPath)
         } while path != oldPath
         
         guard case .handle(let handle) = try await sendRequest(.opendir(.init(requestId: self.allocateRequestId(), handle: path))) else {
@@ -139,7 +138,6 @@ public final class SFTPClient {
             )
         }
         
-        print(names)
         return names
     }
     
