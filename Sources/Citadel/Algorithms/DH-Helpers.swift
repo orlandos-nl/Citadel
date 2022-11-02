@@ -42,218 +42,9 @@ let dh14p: [UInt8] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 ]
 
-public struct DiffieHellmanGroup14Sha1: NIOSSHKeyExchangeAlgorithmProtocol {
-    public static let keyExchangeInitMessageId: UInt8 = 30
-    public static let keyExchangeReplyMessageId: UInt8 = 31
-    
-    public static let keyExchangeAlgorithmNames: [Substring] = ["diffie-hellman-group14-sha1"]
-    
-    private var previousSessionIdentifier: ByteBuffer?
-    private var ourRole: SSHConnectionRole
-    private var theirKey: Insecure.RSA.PublicKey?
-    private var sharedSecret: Data?
-    public let ourKey: Insecure.RSA.PrivateKey
-    public static var ourKey: Insecure.RSA.PrivateKey?
-    
-    private struct _KeyExchangeResult {
-        var sessionID: ByteBuffer
-        var exchangeHash: Insecure.SHA1.Digest
-        var keys: NIOSSHSessionKeys
-    }
-    
-    public init(ourRole: SSHConnectionRole, previousSessionIdentifier: ByteBuffer?) {
-        self.ourRole = ourRole
-        self.previousSessionIdentifier = previousSessionIdentifier
-        self.ourKey = Self.ourKey ?? Insecure.RSA.PrivateKey()
-    }
-    
-    public func initiateKeyExchangeClientSide(allocator: ByteBufferAllocator) -> ByteBuffer {
-        var buffer = allocator.buffer(capacity: 256)
-        
-        buffer.writeBignum(ourKey._publicKey.modulus)
-        return buffer
-    }
-    
-    public mutating func completeKeyExchangeServerSide(
-        clientKeyExchangeMessage message: ByteBuffer,
-        serverHostKey: NIOSSHPrivateKey,
-        initialExchangeBytes: inout ByteBuffer,
-        allocator: ByteBufferAllocator,
-        expectedKeySizes: ExpectedKeySizes
-    ) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
-        throw CitadelError.unsupported
-    }
-    
-    public mutating func receiveServerKeyExchangePayload(serverKeyExchangeMessage: NIOSSHKeyExchangeServerReply, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
-        let kexResult = try self.finalizeKeyExchange(theirKeyBytes: serverKeyExchangeMessage.publicKey,
-                                                     initialExchangeBytes: &initialExchangeBytes,
-                                                     serverHostKey: serverKeyExchangeMessage.hostKey,
-                                                     allocator: allocator,
-                                                     expectedKeySizes: expectedKeySizes)
-        
-        // We can now verify signature over the exchange hash.
-        guard serverKeyExchangeMessage.hostKey.isValidSignature(serverKeyExchangeMessage.signature, for: kexResult.exchangeHash) else {
-            throw CitadelError.invalidSignature
-        }
-        
-        // Great, all done here.
-        return KeyExchangeResult(
-            sessionID: kexResult.sessionID,
-            keys: kexResult.keys
-        )
-    }
-    
-    private mutating func finalizeKeyExchange(theirKeyBytes f: ByteBuffer,
-                                              initialExchangeBytes: inout ByteBuffer,
-                                              serverHostKey: NIOSSHPublicKey,
-                                              allocator: ByteBufferAllocator,
-                                              expectedKeySizes: ExpectedKeySizes) throws -> _KeyExchangeResult {
-        let f = f.getBytes(at: 0, length: f.readableBytes)!
-        
-        let serverPublicKey = CCryptoBoringSSL_BN_bin2bn(f, f.count, nil)!
-        defer { CCryptoBoringSSL_BN_free(serverPublicKey) }
-        let secret = CCryptoBoringSSL_BN_new()!
-        let serverHostKeyBN = CCryptoBoringSSL_BN_new()
-        defer { CCryptoBoringSSL_BN_free(serverHostKeyBN) }
-        
-        var buffer = ByteBuffer()
-        serverHostKey.write(to: &buffer)
-        buffer.readWithUnsafeReadableBytes { buffer in
-            let buffer = buffer.bindMemory(to: UInt8.self)
-            CCryptoBoringSSL_BN_bin2bn(buffer.baseAddress!, buffer.count, serverHostKeyBN)
-            return buffer.count
-        }
-        
-        let ctx = CCryptoBoringSSL_BN_CTX_new()
-        defer { CCryptoBoringSSL_BN_CTX_free(ctx) }
-        
-        let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)
-        defer { CCryptoBoringSSL_BN_free(group) }
-        
-        guard CCryptoBoringSSL_BN_mod_exp(
-            secret,
-            serverPublicKey,
-            ourKey.privateExponent,
-            group,
-            ctx
-        ) == 1 else {
-            throw CitadelError.cryptographicError
-        }
-        
-        var sharedSecret = [UInt8]()
-        sharedSecret.reserveCapacity(Int(CCryptoBoringSSL_BN_num_bytes(secret)))
-        CCryptoBoringSSL_BN_bn2bin(secret, &sharedSecret)
-        
-        self.sharedSecret = Data(sharedSecret)
-        
-        func hexEncodedString(array: [UInt8]) -> String {
-            return array.map { String(format: "%02hhx", $0) }.joined()
-        }
-        
-        //var offset = initialExchangeBytes.writerIndex
-        initialExchangeBytes.writeCompositeSSHString {
-            serverHostKey.write(to: &$0)
-        }
-        
-        //offset = initialExchangeBytes.writerIndex
-        switch self.ourRole {
-        case .client:
-            initialExchangeBytes.writeMPBignum(ourKey._publicKey.modulus)
-            //offset = initialExchangeBytes.writerIndex
-            initialExchangeBytes.writeMPBignum(serverPublicKey)
-        case .server:
-            initialExchangeBytes.writeMPBignum(serverPublicKey)
-            initialExchangeBytes.writeMPBignum(ourKey._publicKey.modulus)
-        }
-        
-        // Ok, now finalize the exchange hash. If we don't have a previous session identifier at this stage, we do now!
-        initialExchangeBytes.writeMPBignum(secret)
-        
-        let exchangeHash = Insecure.SHA1.hash(data: initialExchangeBytes.readableBytesView)
-
-        let sessionID: ByteBuffer
-        if let previousSessionIdentifier = self.previousSessionIdentifier {
-            sessionID = previousSessionIdentifier
-        } else {
-            var hashBytes = allocator.buffer(capacity: Insecure.SHA1.byteCount)
-            hashBytes.writeContiguousBytes(exchangeHash)
-            sessionID = hashBytes
-        }
-
-        // Now we can generate the keys.
-        let keys = self.generateKeys(secret: secret, exchangeHash: exchangeHash, sessionID: sessionID, expectedKeySizes: expectedKeySizes)
-
-        // All done!
-        return _KeyExchangeResult(sessionID: sessionID, exchangeHash: exchangeHash, keys: keys)
-    }
-
-    private func generateKeys(secret: UnsafeMutablePointer<BIGNUM>, exchangeHash: Insecure.SHA1.Digest, sessionID: ByteBuffer, expectedKeySizes: ExpectedKeySizes) -> NIOSSHSessionKeys {
-        // Cool, now it's time to generate the keys. In my ideal world I'd have a mechanism to handle this digest securely, but this is
-        // not available in CryptoKit so we're going to spill these keys all over the heap and the stack. This isn't ideal, but I don't
-        // think the risk is too bad.
-        //
-        // We generate these as follows:
-        //
-        // - Initial IV client to server: HASH(K || H || "A" || session_id)
-        //    (Here K is encoded as mpint and "A" as byte and session_id as raw
-        //    data.  "A" means the single character A, ASCII 65).
-        // - Initial IV server to client: HASH(K || H || "B" || session_id)
-        // - Encryption key client to server: HASH(K || H || "C" || session_id)
-        // - Encryption key server to client: HASH(K || H || "D" || session_id)
-        // - Integrity key client to server: HASH(K || H || "E" || session_id)
-        // - Integrity key server to client: HASH(K || H || "F" || session_id)
-        
-        func calculateSha1SymmetricKey(letter: UInt8, expectedKeySize size: Int) -> SymmetricKey {
-            SymmetricKey(data: calculateSha1Key(letter: letter, expectedKeySize: size))
-        }
-        
-        func calculateSha1Key(letter: UInt8, expectedKeySize size: Int) -> [UInt8] {
-            var result = [UInt8]()
-            var hashInput = ByteBuffer()
-            
-            while result.count < size {
-                hashInput.moveWriterIndex(to: 0)
-                hashInput.writeMPBignum(secret)
-                hashInput.writeBytes(exchangeHash)
-                
-                if !result.isEmpty {
-                    hashInput.writeBytes(result)
-                } else {
-                    hashInput.writeInteger(letter)
-                    hashInput.writeBytes(sessionID.readableBytesView)
-                }
-                
-                result += Insecure.SHA1.hash(data: hashInput.readableBytesView)
-            }
-            
-            result.removeLast(result.count - size)
-            return result
-        }
-
-        switch self.ourRole {
-        case .client:
-            return NIOSSHSessionKeys(
-                initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "B"), expectedKeySize: expectedKeySizes.ivSize),
-                initialOutboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),
-                inboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "D"), expectedKeySize: expectedKeySizes.encryptionKeySize),
-                outboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "C"), expectedKeySize: expectedKeySizes.encryptionKeySize),
-                inboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "F"), expectedKeySize: expectedKeySizes.macKeySize),
-                outboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "E"), expectedKeySize: expectedKeySizes.macKeySize))
-        case .server:
-            return NIOSSHSessionKeys(
-                initialInboundIV: calculateSha1Key(letter: UInt8(ascii: "A"), expectedKeySize: expectedKeySizes.ivSize),
-                initialOutboundIV: calculateSha1Key(letter: UInt8(ascii: "B"), expectedKeySize: expectedKeySizes.ivSize),
-                inboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "C"), expectedKeySize: expectedKeySizes.encryptionKeySize),
-                outboundEncryptionKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "D"), expectedKeySize: expectedKeySizes.encryptionKeySize),
-                inboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "E"), expectedKeySize: expectedKeySizes.macKeySize),
-                outboundMACKey: calculateSha1SymmetricKey(letter: UInt8(ascii: "F"), expectedKeySize: expectedKeySizes.macKeySize))
-        }
-    }
-}
-
 extension SymmetricKey {
     /// Creates a symmetric key by truncating a given digest.
-    fileprivate static func truncatingDigest<D: Digest>(_ digest: D, length: Int) -> SymmetricKey {
+    static func truncatingDigest<D: Digest>(_ digest: D, length: Int) -> SymmetricKey {
         assert(length <= D.byteCount)
         return digest.withUnsafeBytes { bodyPtr in
             SymmetricKey(data: UnsafeRawBufferPointer(rebasing: bodyPtr.prefix(length)))
@@ -262,7 +53,7 @@ extension SymmetricKey {
 }
 
 extension HashFunction {
-    fileprivate mutating func update(byte: UInt8) {
+    mutating func update(byte: UInt8) {
         withUnsafeBytes(of: byte) { bytePtr in
             assert(bytePtr.count == 1, "Why is this 8 bit integer so large?")
             self.update(bufferPointer: bytePtr)
@@ -299,7 +90,7 @@ extension ByteBuffer {
         var size = (bignum.bitWidth + 7) / 8
         writeWithUnsafeMutableBytes(minimumWritableBytes: Int(size + 1)) { buffer in
             let buffer = buffer.bindMemory(to: UInt8.self)
-
+            
             buffer.baseAddress!.pointee = 0
             
             let serialized = Array(bignum.serialize())
@@ -356,7 +147,7 @@ extension HashFunction {
     fileprivate mutating func updateAsMPInt(sharedSecret: Data) {
         sharedSecret.withUnsafeBytes { secretBytesPtr in
             var secretBytesPtr = secretBytesPtr[...]
-
+            
             // Here we treat this shared secret as an mpint by just treating these bytes as an unsigned
             // fixed-length integer in network byte order, as suggested by draft-ietf-curdle-ssh-curves-08,
             // and "prepending" it with a 32-bit length field. Note that instead of prepending, we just make
@@ -385,11 +176,11 @@ extension HashFunction {
             }
             let numberOfZeroBytes = firstNonZeroByteIndex - secretBytesPtr.startIndex
             let topBitOfFirstNonZeroByteIsSet = secretBytesPtr[firstNonZeroByteIndex] & 0x80 == 0x80
-
+            
             // We need to hash a few extra bytes: specifically, we need a 4 byte length in network byte order,
             // and maybe a fifth as a zero byte.
             var lengthHelper = SharedSecretLengthHelper()
-
+            
             switch (numberOfZeroBytes, topBitOfFirstNonZeroByteIsSet) {
             case (0, false):
                 // This is the easy case, we just treat the whole thing as the body.
@@ -410,7 +201,7 @@ extension HashFunction {
                 lengthHelper.length = UInt8(secretBytesPtr.count)
                 lengthHelper.useExtraZeroByte = false
             }
-
+            
             // Now generate the hash.
             lengthHelper.update(hasher: &self)
             self.update(bufferPointer: UnsafeRawBufferPointer(rebasing: secretBytesPtr))
@@ -429,10 +220,10 @@ private struct SharedSecretLengthHelper {
     // 32 bytes long (before the mpint transformation), we only ever actually need to modify one of these bytes:
     // the 4th.
     private var backingBytes = (UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0))
-
+    
     /// Whether we should hash an extra zero byte.
     var useExtraZeroByte: Bool = false
-
+    
     /// The length to encode.
     var length: UInt8 {
         get {
@@ -442,27 +233,27 @@ private struct SharedSecretLengthHelper {
             self.backingBytes.3 = newValue
         }
     }
-
+    
     // Remove the elementwise initializer.
     init() {}
-
+    
     func update<Hasher: HashFunction>(hasher: inout Hasher) {
         withUnsafeBytes(of: self.backingBytes) { bytesPtr in
             precondition(bytesPtr.count == 5)
-
+            
             let bytesToHash: UnsafeRawBufferPointer
             if self.useExtraZeroByte {
                 bytesToHash = bytesPtr
             } else {
                 bytesToHash = UnsafeRawBufferPointer(rebasing: bytesPtr.prefix(4))
             }
-
+            
             hasher.update(bufferPointer: bytesToHash)
         }
     }
 }
 
-fileprivate extension ByteBuffer {
+extension ByteBuffer {
     /// Many functions in SSH write composite data structures into an SSH string. This is a tricky thing to express
     /// without confining all of those functions to writing strings directly, which is pretty uncool. Instead, we can
     /// wrap the body into this function, which will take the returned total length and use that as the string length.
@@ -471,7 +262,7 @@ fileprivate extension ByteBuffer {
         // Reserve 4 bytes for the length.
         let originalWriterIndex = self.writerIndex
         self.moveWriterIndex(forwardBy: 4)
-
+        
         var writtenLength: Int
         do {
             writtenLength = try compositeFunction(&self)
@@ -480,7 +271,7 @@ fileprivate extension ByteBuffer {
             self.moveWriterIndex(to: originalWriterIndex)
             throw error
         }
-
+        
         // Ok, now we're going to write the length.
         writtenLength += self.setInteger(UInt32(writtenLength), at: originalWriterIndex)
         return writtenLength

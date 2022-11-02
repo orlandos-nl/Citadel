@@ -130,6 +130,8 @@ public final class SSHServer {
         host: String,
         port: Int,
         hostKeys: [NIOSSHPrivateKey],
+        customKeyExchangeAlgorithms: [NIOSSHKeyExchangeAlgorithmProtocol.Type] = [],
+        customTransportProtectionSchemes: [NIOSSHTransportProtection.Type] = [],
         logger: Logger = Logger(label: "nl.orlandos.citadel.server"),
         authenticationDelegate: NIOSSHServerUserAuthenticationDelegate,
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
@@ -137,15 +139,17 @@ public final class SSHServer {
         let delegate = CitadelServerDelegate()
         let bootstrap = ServerBootstrap(group: group)
             .childChannelInitializer { channel in
-                channel.pipeline.addHandlers([
+                var server = SSHServerConfiguration(
+                    hostKeys: hostKeys,
+                    userAuthDelegate: authenticationDelegate,
+                    globalRequestDelegate: nil
+                )
+                server.keyExchangeAlgorithms.append(contentsOf: customKeyExchangeAlgorithms)
+                server.transportProtectionSchemes.append(contentsOf: customTransportProtectionSchemes)
+                
+                return channel.pipeline.addHandlers([
                     NIOSSHHandler(
-                        role: .server(
-                            .init(
-                                hostKeys: hostKeys,
-                                userAuthDelegate: authenticationDelegate,
-                                globalRequestDelegate: nil
-                            )
-                        ),
+                        role: .server(server),
                         allocator: channel.allocator,
                         inboundChildChannelInitializer: delegate.initializeSshChildChannel
                     ),
