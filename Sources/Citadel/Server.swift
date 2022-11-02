@@ -146,6 +146,7 @@ public final class SSHServer {
                 )
                 server.keyExchangeAlgorithms.append(contentsOf: customKeyExchangeAlgorithms)
                 server.transportProtectionSchemes.append(contentsOf: customTransportProtectionSchemes)
+                logger.info("New session being instantiated over TCP")
                 
                 return channel.pipeline.addHandlers([
                     NIOSSHHandler(
