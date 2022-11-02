@@ -4,8 +4,14 @@ import NIOSSH
 
 final class CloseErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Any
+    let logger: Logger
+    
+    init(logger: Logger) {
+        self.logger = logger
+    }
     
     func errorCaught(context: ChannelHandlerContext, error: Error) {
+        logger.error("SSH Server Error: \(error)")
         context.close(promise: nil)
     }
 }
@@ -97,12 +103,14 @@ final class CitadelServerDelegate {
 public final class SSHServer {
     let channel: Channel
     let delegate: CitadelServerDelegate
+    let logger: Logger
     public var closeFuture: EventLoopFuture<Void> {
         channel.closeFuture
     }
     
-    init(channel: Channel, delegate: CitadelServerDelegate) {
+    init(channel: Channel, logger: Logger, delegate: CitadelServerDelegate) {
         self.channel = channel
+        self.logger = logger
         self.delegate = delegate
     }
     
@@ -122,6 +130,7 @@ public final class SSHServer {
         host: String,
         port: Int,
         hostKeys: [NIOSSHPrivateKey],
+        logger: Logger = Logger(label: "nl.orlandos.citadel.server"),
         authenticationDelegate: NIOSSHServerUserAuthenticationDelegate,
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
     ) async throws -> SSHServer {
@@ -140,14 +149,14 @@ public final class SSHServer {
                         allocator: channel.allocator,
                         inboundChildChannelInitializer: delegate.initializeSshChildChannel
                     ),
-                    CloseErrorHandler()
+                    CloseErrorHandler(logger: logger)
                 ])
             }
             .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
 
         return try await bootstrap.bind(host: host, port: port).map { channel in
-            SSHServer(channel: channel, delegate: delegate)
+            SSHServer(channel: channel, logger: logger, delegate: delegate)
         }.get()
     }
 }

@@ -123,21 +123,6 @@ final class ExecHandler: ChannelDuplexHandler {
                 channel.close(promise: nil)
             }
         }
-//        DispatchQueue(label: "stderrorwhatever").async {
-//            while true {
-//                let data = handler.stderrPipe.fileHandleForReading.readData(ofLength: 1024)
-//
-//                guard data.count > 0 else {
-//                    // Stderr is done
-//                    channel.close(promise: nil)
-//                    return
-//                }
-//
-//                var buffer = channel.allocator.buffer(capacity: data.count)
-//                buffer.writeContiguousBytes(data)
-//                channel.write(SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)), promise: nil)
-//            }
-//        }
         
         channel.pipeline.addHandler(ours).flatMap {
             NIOPipeBootstrap(group: channel.eventLoop)

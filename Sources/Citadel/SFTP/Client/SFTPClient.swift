@@ -38,7 +38,7 @@ public final class SFTPClient {
             deserializeHandler,
             serializeHandler,
             sftpInboundHandler,
-            CloseErrorHandler()
+            CloseErrorHandler(logger: logger)
         ).map {
             let client = SFTPClient(channel: channel, responses: responses, logger: logger)
 

@@ -50,7 +50,7 @@ struct SFTPServerSubsystem {
             deserializeHandler,
             serializeHandler,
             sftpInboundHandler,
-            CloseErrorHandler()
+            CloseErrorHandler(logger: logger)
         )
     }
 }
