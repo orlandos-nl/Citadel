@@ -44,7 +44,31 @@ public struct DiffieHellmanGroup14Sha256: NIOSSHKeyExchangeAlgorithmProtocol {
         allocator: ByteBufferAllocator,
         expectedKeySizes: ExpectedKeySizes
     ) throws -> (KeyExchangeResult, NIOSSHKeyExchangeServerReply) {
-        throw CitadelError.unsupported
+        // With that, we have enough to finalize the key exchange.
+        let kexResult = try self.finalizeKeyExchange(
+            theirKeyBytes: message,
+            initialExchangeBytes: &initialExchangeBytes,
+            serverHostKey: serverHostKey.publicKey,
+            allocator: allocator,
+            expectedKeySizes: expectedKeySizes
+        )
+        
+        // We should now sign the exchange hash.
+        let exchangeHashSignature = try serverHostKey.sign(digest: kexResult.exchangeHash)
+        
+        // Ok, time to write the final message. We need to write our public key into it.
+        // The largest key we're likely to end up with here is 256 bytes.
+        var publicKeyBytes = allocator.buffer(capacity: 256)
+        _ = self.ourKey.publicKey.write(to: &publicKeyBytes)
+        
+        // Now we have all we need.
+        let responseMessage = NIOSSHKeyExchangeServerReply(
+            hostKey: serverHostKey.publicKey,
+            publicKey: publicKeyBytes,
+            signature: exchangeHashSignature
+        )
+        
+        return (KeyExchangeResult(sessionID: kexResult.sessionID, keys: kexResult.keys), responseMessage)
     }
     
     public mutating func receiveServerKeyExchangePayload(serverKeyExchangeMessage: NIOSSHKeyExchangeServerReply, initialExchangeBytes: inout ByteBuffer, allocator: ByteBufferAllocator, expectedKeySizes: ExpectedKeySizes) throws -> KeyExchangeResult {
