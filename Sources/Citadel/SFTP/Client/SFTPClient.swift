@@ -300,7 +300,7 @@ extension SSHClient {
                 return client.channel.writeAndFlush(initializeMessage).flatMap {
                     return client.responses.initialized.futureResult
                 }.flatMapThrowing { serverVersion in
-                    guard serverVersion.version == .v3 else {
+                    guard serverVersion.version >= .v3 else {
                         logger.warning("SFTP ERROR: Server version is unrecognized: \(serverVersion.version.rawValue)")
                         throw SFTPError.unsupportedVersion(serverVersion.version)
                     }

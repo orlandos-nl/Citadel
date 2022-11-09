@@ -25,7 +25,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     }
     
     func initialize(command: SFTPMessage.Initialize, context: ChannelHandlerContext) {
-        guard command.version == .v3 else {
+        guard command.version >= .v3 else {
             return context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
                 context.channel.close(promise: nil)
             }
