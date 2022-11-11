@@ -89,6 +89,7 @@ let pool = MongoSingleConnectionPool(
 A couple of code is held back until further work in SwiftNIO SSH is completed.
 
 - [ ] RSA Authentication (implemented, but in a [fork of NIOSSH](https://github.com/Joannis/swift-nio-ssh-1/pull/1))
+- [ ] Much more documentation & tutorials
 
 ## Contributing
 
