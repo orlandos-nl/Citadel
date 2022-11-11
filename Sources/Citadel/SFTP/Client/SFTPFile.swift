@@ -18,6 +18,8 @@ public final class SFTPFile {
     /// - Note: Make this `private` when concurrency isn't in a separate file anymore.
     internal let handle: SFTPFileHandle
     
+    internal let path: String
+    
     /// The `SFTPClient` this handle belongs to.
     ///
     /// - Note: Make this `private` when concurrency isn't in a separate file anymore.
@@ -27,10 +29,11 @@ public final class SFTPFile {
     /// having taken ownership of the handle; nothing else should continue to use the handle.
     ///
     /// Do not create instances of `SFTPFile` yourself; use `SFTPClient.openFile()`.
-    internal init(client: SFTPClient, handle: SFTPFileHandle) {
+    internal init(client: SFTPClient, path: String, handle: SFTPFileHandle) {
         self.isActive = true
         self.handle = handle
         self.client = client
+        self.path = path
     }
     
     /// A `Logger` for the file. Uses the logger of the client that opened the file.
@@ -38,6 +41,20 @@ public final class SFTPFile {
     
     deinit {
         assert(!self.client.isActive || !self.isActive, "SFTPFile deallocated without being closed first")
+    }
+    
+    public func readAttributes() async throws -> SFTPFileAttributes {
+        guard self.isActive else { throw SFTPError.fileHandleInvalid }
+        
+        guard case .attributes(let attributes) = try await self.client.sendRequest(.stat(.init(
+            requestId: self.client.allocateRequestId(),
+            path: path
+        ))) else {
+            self.logger.warning("SFTP server returned bad response to read file request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+                                                                                         
+        return attributes.attributes
     }
     
     /// Read up to the given number of bytes from the file, starting at the given byte offset. If the offset
@@ -71,13 +88,31 @@ public final class SFTPFile {
     /// - Tip: This method is overkill unless you expect to be working with very large files. You may
     ///   want to make sure the host of said code has plenty of spare RAM.
     public func readAll() async throws -> ByteBuffer {
+        let attributes = try await self.readAttributes()
+        
         var buffer = ByteBuffer()
 
         self.logger.debug("SFTP starting chunked read operation on file \(self.handle.sftpHandleDebugDescription)")
 
         do {
-            while var data = try await self.read(from: numericCast(buffer.writerIndex)).nilIfUnreadable() {
-                buffer.writeBuffer(&data)
+            if var readableBytes = attributes.size {
+                while readableBytes > 0 {
+                    let consumed = Swift.min(readableBytes, UInt64(UInt32.max))
+                    readableBytes -= consumed
+                    
+                    var data = try await self.read(
+                        from: numericCast(buffer.writerIndex),
+                        length: UInt32(consumed)
+                    )
+                    
+                    buffer.writeBuffer(&data)
+                }
+            } else {
+                while var data = try await self.read(
+                    from: numericCast(buffer.writerIndex)
+                ).nilIfUnreadable() {
+                    buffer.writeBuffer(&data)
+                }
             }
         } catch let error as SFTPMessage.Status where error.errorCode == .eof {
             // EOF is not an error, don't treat it as one.
@@ -97,10 +132,19 @@ public final class SFTPFile {
         let sliceLength = 32_000 // https://github.com/apple/swift-nio-ssh/issues/99
         
         while data.readableBytes > 0, let slice = data.readSlice(length: Swift.min(sliceLength, data.readableBytes)) {
-            _ = try await self.client.sendRequest(.write(.init(
+            let result = try await self.client.sendRequest(.write(.init(
                 requestId: self.client.allocateRequestId(),
                 handle: self.handle, offset: offset + UInt64(data.readerIndex) - UInt64(slice.readableBytes), data: slice
             )))
+            
+            guard case .status(let status) = result else {
+                throw SFTPError.invalidResponse
+            }
+            
+            guard status.errorCode == .ok else {
+                throw SFTPError.errorStatus(status)
+            }
+            
             self.logger.debug("SFTP wrote \(slice.readableBytes) @ \(Int(offset) + data.readerIndex - slice.readableBytes) to file \(self.handle.sftpHandleDebugDescription)")
         }
 
@@ -120,8 +164,18 @@ public final class SFTPFile {
         }
         
         self.logger.debug("SFTP closing and invalidating file \(self.handle.sftpHandleDebugDescription)")
+        
         self.isActive = false
-        _ = try await self.client.sendRequest(.closeFile(.init(requestId: self.client.allocateRequestId(), handle: self.handle)))
+        let result = try await self.client.sendRequest(.closeFile(.init(requestId: self.client.allocateRequestId(), handle: self.handle)))
+        
+        guard case .status(let status) = result else {
+            throw SFTPError.invalidResponse
+        }
+        
+        guard status.errorCode == .ok else {
+            throw SFTPError.errorStatus(status)
+        }
+        
         self.logger.debug("SFTP closed file \(self.handle.sftpHandleDebugDescription)")
     }
 }

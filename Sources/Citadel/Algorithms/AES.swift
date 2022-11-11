@@ -14,6 +14,7 @@ enum CitadelError: Error {
     case invalidSignature
     case signingError
     case unsupported
+    case unauthorized
     case commandOutputTooLarge
     case channelCreationFailed
 }

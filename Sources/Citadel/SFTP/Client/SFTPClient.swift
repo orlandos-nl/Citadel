@@ -30,15 +30,15 @@ public final class SFTPClient {
         
         let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
         let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
-        let sftpInboundHandler = SFTPInboundHandler(responses: responses, logger: logger)
+        let sftpInboundHandler = SFTPClientInboundHandler(responses: responses, logger: logger)
         
         return channel.pipeline.addHandlers(
             SSHChannelDataUnwrapper(),
-            SSHChannelDataWrapper(),
+            SSHOutboundChannelDataWrapper(),
             deserializeHandler,
             serializeHandler,
             sftpInboundHandler,
-            CloseErrorHandler()
+            CloseErrorHandler(logger: logger)
         ).map {
             let client = SFTPClient(channel: channel, responses: responses, logger: logger)
 
@@ -95,6 +95,70 @@ public final class SFTPClient {
         }.get()
     }
     
+    public func listDirectory(
+        atPath path: String
+    ) async throws -> [SFTPMessage.Name] {
+        var path = path
+        var oldPath: String
+
+        repeat {
+            oldPath = path
+            guard case .name(let realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
+                self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+                throw SFTPError.invalidResponse
+            }
+
+            path = realpath.path
+        } while path != oldPath
+        
+        guard case .handle(let handle) = try await sendRequest(.opendir(.init(requestId: self.allocateRequestId(), handle: path))) else {
+            self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+        
+        var names = [SFTPMessage.Name]()
+        var response = try await sendRequest(
+            .readdir(
+                .init(
+                    requestId: self.allocateRequestId(),
+                    handle: handle.handle
+                )
+            )
+        )
+        
+        while case .name(let name) = response {
+            names.append(name)
+            response = try await sendRequest(
+                .readdir(
+                    .init(
+                        requestId: self.allocateRequestId(),
+                        handle: handle.handle
+                    )
+                )
+            )
+        }
+        
+        return names
+    }
+    
+    public func getAttributes(
+        at filePath: String
+    ) async throws -> SFTPFileAttributes {
+        self.logger.info("SFTP requesting file attributes at '\(filePath)'")
+        
+        let response = try await sendRequest(.stat(.init(
+            requestId: allocateRequestId(),
+            path: filePath
+        )))
+        
+        guard case .attributes(let attributes) = response else {
+            self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+        
+        return attributes.attributes
+    }
+    
     /// Open a file at the specified path on the SFTP server, using the given flags and attributes.  If the `.create`
     /// flag is specified, the given attributes are applied to the created file. If successful, an `SFTPFile` is
     /// returned which can be used to perform various operations on the open file. The file object must be explicitly
@@ -124,7 +188,7 @@ public final class SFTPClient {
         }
             
         self.logger.debug("SFTP opened file \(filePath), file handle \(handle.handle.sftpHandleDebugDescription)")
-        return SFTPFile(client: self, handle: handle.handle)
+        return SFTPFile(client: self, path: filePath, handle: handle.handle)
     }
     
     /// Open a file at the specified path on the SFTP server, using the given flags. If the `.create` flag is specified,
@@ -187,7 +251,6 @@ extension SSHClient {
     ///   as incoming data read from a file). Care is taken to ensure sensitive information is not included in
     ///   packet traces.
     public func openSFTP(
-        subsystem: String = "sftp",
         logger: Logger = .init(label: "nl.orlandos.citadel.sftp")
     ) async throws -> SFTPClient {
         try await eventLoop.flatSubmit {
@@ -212,11 +275,11 @@ extension SSHClient {
             return createChannel.futureResult.flatMap { channel in
                 let openSubsystem = self.eventLoop.makePromise(of: Void.self)
 
-                logger.debug("SFTP requesting subsystem with name '\(subsystem)'")
+                logger.debug("SFTP requesting subsystem")
 
                 channel.triggerUserOutboundEvent(
                     SSHChannelRequestEvent.SubsystemRequest(
-                        subsystem: subsystem,
+                        subsystem: "sftp",
                         wantReply: true
                     ),
                     promise: openSubsystem
@@ -237,7 +300,7 @@ extension SSHClient {
                 return client.channel.writeAndFlush(initializeMessage).flatMap {
                     return client.responses.initialized.futureResult
                 }.flatMapThrowing { serverVersion in
-                    guard serverVersion.version == .v3 else {
+                    guard serverVersion.version >= .v3 else {
                         logger.warning("SFTP ERROR: Server version is unrecognized: \(serverVersion.version.rawValue)")
                         throw SFTPError.unsupportedVersion(serverVersion.version)
                     }
@@ -273,51 +336,6 @@ final class SFTPResponses {
         
         for promise in self.responses.values {
             promise.fail(SFTPError.connectionClosed)
-        }
-    }
-}
-
-final class SFTPInboundHandler: ChannelInboundHandler {
-    typealias InboundIn = SFTPMessage
-    
-    let responses: SFTPResponses
-    let logger: Logger
-    
-    init(responses: SFTPResponses, logger: Logger) {
-        self.responses = responses
-        self.logger = logger
-    }
-    
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let message = unwrapInboundIn(data)
-        
-        self.logger.trace("SFTP IN:  \(message.debugDescription)")
-        //self.logger.trace("SFTP IN:  \(message.debugRawBytesRepresentation)")
-
-        if !self.responses.isInitialized, case .version(let version) = message {
-            if version.version != .v3 {
-                logger.warning("SFTP ERROR: Server version is unrecognized or incompatible: \(version.version.rawValue)")
-                context.fireErrorCaught(SFTPError.unsupportedVersion(version.version))
-            } else {
-                responses.initialized.succeed(version)
-            }
-        } else if let response = SFTPResponse(message: message) {
-            if let promise = responses.responses.removeValue(forKey: response.requestId) {
-                if case .status(let status) = response, status.errorCode != .ok {
-                    // logged as debug rather than warning because there are many cases in which a protocol error is
-                    // not only nonfatal, but even expected (such as SSH_FX_EOF).
-                    self.logger.debug("SFTP error received: \(status)")
-                    promise.fail(status)
-                } else {
-                    promise.succeed(response)
-                }
-            } else {
-                self.logger.warning("SFTP response received for nonexistent request, this is a protocol error")
-                context.fireErrorCaught(SFTPError.noResponseTarget)
-            }
-        } else {
-            self.logger.warning("SFTP received unrecognized response message, this is a protocol error")
-            context.fireErrorCaught(SFTPError.invalidResponse)
         }
     }
 }

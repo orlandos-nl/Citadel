@@ -98,6 +98,10 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
             flags.insert(.size)
         }
         
+        if uidgid != nil {
+            flags.insert(.uidgid)
+        }
+        
         if permissions != nil {
             flags.insert(.permissions)
         }
@@ -121,12 +125,18 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
     public var accessModificationTime: AccessModificationTime?
     public var extended = [(String, String)]()
     
-    public init() {}
-    // TODO: Extended
-//    let extended_count: UInt32?
+    public init(size: UInt64? = nil, accessModificationTime: AccessModificationTime? = nil) {
+        self.size = size
+        self.accessModificationTime = accessModificationTime
+    }
     
     public static let none = SFTPFileAttributes()
+    public static let all: SFTPFileAttributes = {
+        var attr = SFTPFileAttributes()
+//        attr.permissions = 777
+        return attr
+    }()
     
-    public var debugDescription: String { "unimplemented" }
+    public var debugDescription: String { "{perm: \(permissions), size: \(size), uidgid: \(uidgid)}" }
 }
 

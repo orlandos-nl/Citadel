@@ -27,12 +27,23 @@ final class SSHChannelDataUnwrapper: ChannelInboundHandler {
     }
 }
 
-final class SSHChannelDataWrapper: ChannelOutboundHandler {
+final class SSHOutboundChannelDataWrapper: ChannelOutboundHandler {
     typealias OutboundIn = ByteBuffer
     typealias OutboundOut = SSHChannelData
-
+    
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let data = self.unwrapOutboundIn(data)
         context.write(self.wrapOutboundOut(SSHChannelData(type: .channel, data: .byteBuffer(data))), promise: promise)
+    }
+}
+
+final class SSHInboundChannelDataWrapper: ChannelInboundHandler {
+    typealias InboundIn = ByteBuffer
+    typealias InboundOut = SSHChannelData
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let buffer = self.unwrapInboundIn(data)
+        let data = SSHChannelData(type: .channel, data: .byteBuffer(buffer))
+        context.fireChannelRead(wrapInboundOut(data))
     }
 }

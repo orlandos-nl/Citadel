@@ -14,7 +14,7 @@ extension ByteBuffer {
         return Date(timeIntervalSince1970: TimeInterval(date))
     }
     
-    mutating func writeSFTPFileAttribues(_ attributes: SFTPFileAttributes) {
+    mutating func writeSFTPFileAttributes(_ attributes: SFTPFileAttributes) {
         writeInteger(attributes.flags.rawValue)
         
         if let size = attributes.size {
@@ -80,14 +80,6 @@ extension ByteBuffer {
         }
         
         if flags.contains(.acmodtime) {
-            guard let permissions = readInteger(as: UInt32.self) else {
-                return nil
-            }
-            
-            attributes.permissions = permissions
-        }
-        
-        if flags.contains(.extended) {
             guard
                 let accessTime = readSFTPDate(),
                 let modificationTime = readSFTPDate()

@@ -51,8 +51,7 @@ extension Insecure.RSA {
 //
 //            let result = message.power(publicExponent, modulus: modulus)
 //            return EncryptedMessage(rawRepresentation: result.serialize())
-//            throw CitadelError.unsupported
-            fatalError()
+            throw CitadelError.unsupported
         }
         
         public func isValidSignature<D: DataProtocol>(_ signature: Signature, for digest: D) -> Bool {
@@ -266,8 +265,7 @@ extension Insecure.RSA {
 //
 //                return signature.power(privateExponent, modulus: modulus).serialize()
 //            }
-//            throw CitadelError.unsupported
-            fatalError()
+            throw CitadelError.unsupported
         }
         
         internal func generatedSharedSecret(with publicKey: PublicKey, modulus: BigUInt) -> Data {

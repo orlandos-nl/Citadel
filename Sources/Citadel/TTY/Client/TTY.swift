@@ -81,23 +81,30 @@ extension SSHClient {
     public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
-        let channel: Channel = try await eventLoop.flatSubmit {
-            let createChannel = self.eventLoop.makePromise(of: Channel.self)
-            self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                channel.pipeline.addHandlers(
-                    TTYHandler(
-                        maxResponseSize: maxResponseSize,
-                        done: promise
+        let channel: Channel
+        
+        do {
+            channel = try await eventLoop.flatSubmit {
+                let createChannel = self.eventLoop.makePromise(of: Channel.self)
+                self.session.sshHandler.createChannel(createChannel) { channel, _ in
+                    channel.pipeline.addHandlers(
+                        TTYHandler(
+                            maxResponseSize: maxResponseSize,
+                            done: promise
+                        )
                     )
-                )
-            }
-            
-            self.eventLoop.scheduleTask(in: .seconds(15)) {
-                createChannel.fail(CitadelError.channelCreationFailed)
-            }
-            
-            return createChannel.futureResult
-        }.get()
+                }
+                
+                self.eventLoop.scheduleTask(in: .seconds(15)) {
+                    createChannel.fail(CitadelError.channelCreationFailed)
+                }
+                
+                return createChannel.futureResult
+            }.get()
+        } catch {
+            promise.fail(error)
+            throw error
+        }
         
         // We need to exec a thing.
         let execRequest = SSHChannelRequestEvent.ExecRequest(

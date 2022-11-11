@@ -11,6 +11,15 @@
         }
       },
       {
+        "package": "swift-atomics",
+        "repositoryURL": "https://github.com/apple/swift-atomics.git",
+        "state": {
+          "branch": null,
+          "revision": "919eb1d83e02121cdb434c7bfc1f0c66ef17febe",
+          "version": "1.0.2"
+        }
+      },
+      {
         "package": "swift-crypto",
         "repositoryURL": "https://github.com/apple/swift-crypto.git",
         "state": {
@@ -42,7 +51,7 @@
         "repositoryURL": "https://github.com/Joannis/swift-nio-ssh.git",
         "state": {
           "branch": "citadel2",
-          "revision": "171bb0447d52928b4c49790579c98006e1d4ccd4",
+          "revision": "ff31fabc505f34abd6886501c112d806a0d75ef6",
           "version": null
         }
       }

@@ -31,8 +31,6 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     }
 }
 
-//final class
-
 final class SSHClientSession {
     let channel: Channel
     let sshHandler: NIOSSHHandler

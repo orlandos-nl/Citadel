@@ -24,7 +24,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(openFile.requestId)
             out.writeSSHString(openFile.filePath)
             out.writeInteger(openFile.pFlags.rawValue)
-            out.writeSFTPFileAttribues(openFile.attributes)
+            out.writeSFTPFileAttributes(openFile.attributes)
         case .closeFile(var closeFile):
             out.writeInteger(SFTPMessage.CloseFile.id.rawValue)
             out.writeInteger(closeFile.requestId)
@@ -59,7 +59,67 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(SFTPMessage.MkDir.id.rawValue)
             out.writeInteger(mkdir.requestId)
             out.writeSSHString(mkdir.filePath)
-            out.writeSFTPFileAttribues(mkdir.attributes)
+            out.writeSFTPFileAttributes(mkdir.attributes)
+        case .rmdir(let rmdir):
+            out.writeInteger(SFTPMessage.RmDir.id.rawValue)
+            out.writeInteger(rmdir.requestId)
+            out.writeSSHString(rmdir.filePath)
+        case .stat(let stat):
+            out.writeInteger(SFTPMessage.Stat.id.rawValue)
+            out.writeInteger(stat.requestId)
+            out.writeSSHString(stat.path)
+        case .lstat(let lstat):
+            out.writeInteger(SFTPMessage.LStat.id.rawValue)
+            out.writeInteger(lstat.requestId)
+            out.writeSSHString(lstat.path)
+        case .attributes(let fstat):
+            out.writeInteger(SFTPMessage.Attributes.id.rawValue)
+            out.writeInteger(fstat.requestId)
+            out.writeSFTPFileAttributes(fstat.attributes)
+        case .realpath(let realPath):
+            out.writeInteger(SFTPMessage.RealPath.id.rawValue)
+            out.writeInteger(realPath.requestId)
+            out.writeSSHString(realPath.path)
+        case .name(let name):
+            out.writeInteger(SFTPMessage.Name.id.rawValue)
+            out.writeInteger(name.requestId)
+            out.writeInteger(name.count)
+            
+            for component in name.components {
+                out.writeSSHString(component.filename)
+                out.writeSSHString(component.longname)
+                out.writeSFTPFileAttributes(component.attributes)
+            }
+        case .opendir(let opendir):
+            out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
+            out.writeInteger(opendir.requestId)
+            out.writeSSHString(opendir.handle)
+        case .readdir(var readdir):
+            out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
+            out.writeInteger(readdir.requestId)
+            out.writeSSHString(&readdir.handle)
+        case .fstat(var fstat):
+            out.writeInteger(SFTPMessage.FileStat.id.rawValue)
+            out.writeInteger(fstat.requestId)
+            out.writeSSHString(&fstat.handle)
+        case .remove(let remove):
+            out.writeInteger(SFTPMessage.Remove.id.rawValue)
+            out.writeSSHString(remove.filename)
+        case .fsetstat(var fsetstat):
+            out.writeInteger(SFTPMessage.FileSetStat.id.rawValue)
+            out.writeSSHString(&fsetstat.handle)
+            out.writeSFTPFileAttributes(fsetstat.attributes)
+        case .setstat(let setstat):
+            out.writeInteger(SFTPMessage.SetStat.id.rawValue)
+            out.writeSSHString(setstat.path)
+            out.writeSFTPFileAttributes(setstat.attributes)
+        case .symlink(let symlink):
+            out.writeInteger(SFTPMessage.Symlink.id.rawValue)
+            out.writeSSHString(symlink.linkPath)
+            out.writeSSHString(symlink.targetPath)
+        case .readlink(let readlink):
+            out.writeInteger(SFTPMessage.Symlink.id.rawValue)
+            out.writeSSHString(readlink.path)
         }
         
         let length = out.writerIndex - lengthIndex - 4
