@@ -95,7 +95,7 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(opendir.requestId)
             out.writeSSHString(opendir.handle)
         case .readdir(var readdir):
-            out.writeInteger(SFTPMessage.OpenDir.id.rawValue)
+            out.writeInteger(SFTPMessage.ReadDir.id.rawValue)
             out.writeInteger(readdir.requestId)
             out.writeSSHString(&readdir.handle)
         case .fstat(var fstat):
