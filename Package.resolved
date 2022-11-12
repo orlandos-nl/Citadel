@@ -50,9 +50,9 @@
         "package": "swift-nio-ssh",
         "repositoryURL": "https://github.com/Joannis/swift-nio-ssh.git",
         "state": {
-          "branch": "citadel2",
-          "revision": "ff31fabc505f34abd6886501c112d806a0d75ef6",
-          "version": null
+          "branch": null,
+          "revision": "5760fccf453116606954f0ca21b9cfa25131d924",
+          "version": "0.1.0"
         }
       }
     ]

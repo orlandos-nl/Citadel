@@ -121,7 +121,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             try await file.read(at: command.offset, length: command.length)
         }.flatMap { data -> EventLoopFuture<Void> in
             if data.readableBytes == 0 {
-                context.channel.writeAndFlush(
+                return context.channel.writeAndFlush(
                     SFTPMessage.status(
                         .init(
                             requestId: command.requestId,
@@ -132,7 +132,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                     )
                 )
             } else {
-                context.channel.writeAndFlush(
+                return context.channel.writeAndFlush(
                     SFTPMessage.data(
                         SFTPMessage.FileData(
                             requestId: command.requestId,
