@@ -120,14 +120,27 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         withFileHandle(command.handle, context: context) { file -> ByteBuffer in
             try await file.read(at: command.offset, length: command.length)
         }.flatMap { data -> EventLoopFuture<Void> in
-            context.channel.writeAndFlush(
-                SFTPMessage.data(
-                    SFTPMessage.FileData(
-                        requestId: command.requestId,
-                        data: data
+            if data.readableBytes == 0 {
+                context.channel.writeAndFlush(
+                    SFTPMessage.status(
+                        .init(
+                            requestId: command.requestId,
+                            errorCode: .eof,
+                            message: "EOF",
+                            languageTag: "EN"
+                        )
                     )
                 )
-            )
+            } else {
+                context.channel.writeAndFlush(
+                    SFTPMessage.data(
+                        SFTPMessage.FileData(
+                            requestId: command.requestId,
+                            data: data
+                        )
+                    )
+                )
+            }
         }.whenFailure { _ in
             context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
                 context.channel.close(promise: nil)
