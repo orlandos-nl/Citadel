@@ -130,13 +130,14 @@ public final class SSHServer {
         host: String,
         port: Int,
         hostKeys: [NIOSSHPrivateKey],
-        customKeyExchangeAlgorithms: [NIOSSHKeyExchangeAlgorithmProtocol.Type] = [],
-        customTransportProtectionSchemes: [NIOSSHTransportProtection.Type] = [],
+        algorithms: SSHAlgorithms = SSHAlgorithms(),
+        protocolOptions: Set<SSHProtocolOption> = [],
         logger: Logger = Logger(label: "nl.orlandos.citadel.server"),
         authenticationDelegate: NIOSSHServerUserAuthenticationDelegate,
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
     ) async throws -> SSHServer {
         let delegate = CitadelServerDelegate()
+        
         let bootstrap = ServerBootstrap(group: group)
             .childChannelInitializer { channel in
                 var server = SSHServerConfiguration(
@@ -144,9 +145,14 @@ public final class SSHServer {
                     userAuthDelegate: authenticationDelegate,
                     globalRequestDelegate: nil
                 )
-                server.keyExchangeAlgorithms.append(contentsOf: customKeyExchangeAlgorithms)
-                server.transportProtectionSchemes.append(contentsOf: customTransportProtectionSchemes)
+                
+                algorithms.apply(to: &server)
+                
                 logger.info("New session being instantiated over TCP")
+                
+                for option in protocolOptions {
+                    option.apply(to: &server)
+                }
                 
                 return channel.pipeline.addHandlers([
                     NIOSSHHandler(
@@ -163,5 +169,31 @@ public final class SSHServer {
         return try await bootstrap.bind(host: host, port: port).map { channel in
             SSHServer(channel: channel, logger: logger, delegate: delegate)
         }.get()
+    }
+}
+
+public struct SSHProtocolOption: Hashable {
+    internal enum Value: Hashable {
+        case maximumPacketSize(Int)
+    }
+    
+    internal let value: Value
+    
+    public static func maximumPacketSize(_ size: Int) -> Self {
+        return .init(value: .maximumPacketSize(size))
+    }
+    
+    func apply(to client: inout SSHClientConfiguration) {
+        switch value {
+        case .maximumPacketSize(let size):
+            client.maximumPacketSize = size
+        }
+    }
+    
+    func apply(to server: inout SSHServerConfiguration) {
+        switch value {
+        case .maximumPacketSize(let size):
+            server.maximumPacketSize = size
+        }
     }
 }

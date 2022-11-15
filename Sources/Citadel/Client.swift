@@ -33,6 +33,26 @@ public struct SSHAlgorithms {
         }
     }
     
+    func apply(to serverConfiguration: inout SSHServerConfiguration) {
+        switch transportProtectionSchemes {
+        case .add(let algorithms):
+            serverConfiguration.transportProtectionSchemes.append(contentsOf: algorithms)
+        case .replace(with: let algorithms):
+            serverConfiguration.transportProtectionSchemes = algorithms
+        case .none:
+            ()
+        }
+        
+        switch keyExchangeAlgorithms {
+        case .add(let algorithms):
+            serverConfiguration.keyExchangeAlgorithms.append(contentsOf: algorithms)
+        case .replace(with: let algorithms):
+            serverConfiguration.keyExchangeAlgorithms = algorithms
+        case .none:
+            ()
+        }
+    }
+    
     public init() {}
 }
 
@@ -43,6 +63,7 @@ public final class SSHClient {
     let hostKeyValidator: SSHHostKeyValidator
     internal var connectionSettings = SSHConnectionSettings()
     private let algorithms: SSHAlgorithms
+    private let protocolOptions: Set<SSHProtocolOption>
     public var eventLoop: EventLoop {
         session.channel.eventLoop
     }
@@ -51,31 +72,36 @@ public final class SSHClient {
         session: SSHClientSession,
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
-        algorithms: SSHAlgorithms = SSHAlgorithms()
+        algorithms: SSHAlgorithms = SSHAlgorithms(),
+        protocolOptions: Set<SSHProtocolOption>
     ) {
         self.session = session
         self.authenticationMethod = authenticationMethod
         self.hostKeyValidator = hostKeyValidator
         self.algorithms = algorithms
+        self.protocolOptions = protocolOptions
     }
     
     public static func connect(
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
-        algorithms: SSHAlgorithms = SSHAlgorithms()
+        algorithms: SSHAlgorithms = SSHAlgorithms(),
+        protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
             on: channel,
             authenticationMethod: authenticationMethod,
-            hostKeyValidator: hostKeyValidator
+            hostKeyValidator: hostKeyValidator,
+            protocolOptions: protocolOptions
         )
         
         return SSHClient(
             session: session,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: hostKeyValidator,
-            algorithms: algorithms
+            algorithms: algorithms,
+            protocolOptions: protocolOptions
         )
     }
     
@@ -86,6 +112,7 @@ public final class SSHClient {
         hostKeyValidator: SSHHostKeyValidator,
         reconnect: SSHReconnectMode,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
+        protocolOptions: Set<SSHProtocolOption> = [],
         group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
@@ -94,6 +121,7 @@ public final class SSHClient {
             authenticationMethod: authenticationMethod,
             hostKeyValidator: hostKeyValidator,
             algorithms: algorithms,
+            protocolOptions: protocolOptions,
             group: group
         )
         
@@ -101,7 +129,8 @@ public final class SSHClient {
             session: session,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: hostKeyValidator,
-            algorithms: algorithms
+            algorithms: algorithms,
+            protocolOptions: protocolOptions
         )
         
         switch reconnect.mode {
@@ -153,6 +182,7 @@ public final class SSHClient {
             port: port,
             authenticationMethod: authenticationMethod,
             hostKeyValidator: self.hostKeyValidator,
+            protocolOptions: protocolOptions,
             group: session.channel.eventLoop
         )
     }

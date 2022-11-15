@@ -70,15 +70,21 @@ public final class SFTPFile {
     public func read(from offset: UInt64 = 0, length: UInt32 = .max) async throws -> ByteBuffer {
         guard self.isActive else { throw SFTPError.fileHandleInvalid }
 
-        guard case .data(let data) = try await self.client.sendRequest(.read(.init(
+        let response = try await self.client.sendRequest(.read(.init(
             requestId: self.client.allocateRequestId(),
             handle: self.handle, offset: offset, length: length
-        ))) else {
+        )))
+        
+        switch response {
+        case .data(let data):
+            self.logger.debug("SFTP read \(data.data.readableBytes) bytes from file \(self.handle.sftpHandleDebugDescription)")
+            return data.data
+        case .status(let status) where status.errorCode == .eof:
+            return .init()
+        default:
             self.logger.warning("SFTP server returned bad response to read file request, this is a protocol error")
             throw SFTPError.invalidResponse
         }
-        self.logger.debug("SFTP read \(data.data.readableBytes) bytes from file \(self.handle.sftpHandleDebugDescription)")
-        return data.data
     }
     
     /// Read all bytes in the file into a single in-memory buffer. Reads are done in chunks of up to 4GB each.

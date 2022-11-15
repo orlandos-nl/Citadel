@@ -44,7 +44,8 @@ final class SSHClientSession {
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
-        algorithms: SSHAlgorithms = SSHAlgorithms()
+        algorithms: SSHAlgorithms = SSHAlgorithms(),
+        protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: channel.eventLoop)
         var clientConfiguration = SSHClientConfiguration(
@@ -53,6 +54,10 @@ final class SSHClientSession {
         )
         
         algorithms.apply(to: &clientConfiguration)
+        
+        for option in protocolOptions {
+            option.apply(to: &clientConfiguration)
+        }
         
         return try await channel.pipeline.addHandlers(
             NIOSSHHandler(
@@ -76,6 +81,7 @@ final class SSHClientSession {
         authenticationMethod: SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
+        protocolOptions: Set<SSHProtocolOption> = [],
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
@@ -85,6 +91,10 @@ final class SSHClientSession {
         )
         
         algorithms.apply(to: &clientConfiguration)
+        
+        for option in protocolOptions {
+            option.apply(to: &clientConfiguration)
+        }
         
         let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
             channel.pipeline.addHandlers([
