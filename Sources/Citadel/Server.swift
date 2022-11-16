@@ -148,7 +148,7 @@ public final class SSHServer {
                 
                 algorithms.apply(to: &server)
                 
-                logger.info("New session being instantiated over TCP")
+                logger.debug("New session being instantiated over TCP")
                 
                 for option in protocolOptions {
                     option.apply(to: &server)
