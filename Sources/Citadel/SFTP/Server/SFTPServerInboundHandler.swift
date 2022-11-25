@@ -18,12 +18,14 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     var directories = [UInt32: SFTPDirectoryHandle]()
     var directoryListing = [UInt32: SFTPDirectoryHandleIterator]()
     var previousTask: EventLoopFuture<Void>
+    let username: String?
     
-    init(logger: Logger, delegate: SFTPDelegate, eventLoop: EventLoop) {
+    init(logger: Logger, delegate: SFTPDelegate, eventLoop: EventLoop, username: String?) {
         self.logger = logger
         self.delegate = delegate
         self.initialized = eventLoop.makePromise()
         self.previousTask = eventLoop.makeSucceededVoidFuture()
+        self.username = username
     }
     
     func initialize(command: SFTPMessage.Initialize, context: ChannelHandlerContext) {
@@ -44,6 +46,10 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         )
     }
     
+    func makeContext() -> SSHContext {
+        SSHContext(username: self.username)
+    }
+    
     func openFile(command: SFTPMessage.OpenFile, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPFileHandle.self)
         promise.completeWithTask {
@@ -51,7 +57,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
                 command.filePath,
                 withAttributes: command.attributes,
                 flags: command.pFlags,
-                context: SSHContext()
+                context: self.makeContext()
             )
         }
         
@@ -185,7 +191,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             try await self.delegate.createDirectory(
                 command.filePath,
                 withAttributes: command.attributes,
-                context: SSHContext()
+                context: self.makeContext()
             )
         }
         
@@ -212,7 +218,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         promise.completeWithTask {
             try await self.delegate.removeDirectory(
                 command.filePath,
-                context: SSHContext()
+                context: self.makeContext()
             )
         }
         
@@ -237,7 +243,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     func stat(command: SFTPMessage.Stat, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPFileAttributes.self)
         promise.completeWithTask {
-            try await self.delegate.fileAttributes(atPath: command.path, context: SSHContext())
+            try await self.delegate.fileAttributes(atPath: command.path, context: self.makeContext())
         }
         
         _ = promise.futureResult.flatMap { attributes -> EventLoopFuture<Void> in
@@ -255,7 +261,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     func lstat(command: SFTPMessage.LStat, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPFileAttributes.self)
         promise.completeWithTask {
-            try await self.delegate.fileAttributes(atPath: command.path, context: SSHContext())
+            try await self.delegate.fileAttributes(atPath: command.path, context: self.makeContext())
         }
         
         _ = promise.futureResult.flatMap { attributes -> EventLoopFuture<Void> in
@@ -273,7 +279,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     func realPath(command: SFTPMessage.RealPath, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: [SFTPPathComponent].self)
         promise.completeWithTask {
-            try await self.delegate.realPath(for: command.path, context: SSHContext())
+            try await self.delegate.realPath(for: command.path, context: self.makeContext())
         }
         
         _ = promise.futureResult.flatMap { components -> EventLoopFuture<Void> in
@@ -291,8 +297,8 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     func openDir(command: SFTPMessage.OpenDir, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: (SFTPDirectoryHandle, SFTPDirectoryHandleIterator).self)
         promise.completeWithTask {
-            let handle = try await self.delegate.openDirectory(atPath: command.handle, context: SSHContext())
-            let files = try await handle.listFiles(context: SSHContext())
+            let handle = try await self.delegate.openDirectory(atPath: command.handle, context: self.makeContext())
+            let files = try await handle.listFiles(context: self.makeContext())
             let iterator = SFTPDirectoryHandleIterator(listing: files)
             return (handle, iterator)
         }
@@ -389,7 +395,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
     func removeFile(command: SFTPMessage.Remove, context: ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
         promise.completeWithTask {
-            try await self.delegate.removeFile(command.filename, context: SSHContext())
+            try await self.delegate.removeFile(command.filename, context: self.makeContext())
         }
         _ = promise.futureResult.flatMap { status -> EventLoopFuture<Void> in
             context.channel.writeAndFlush(
@@ -439,7 +445,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             try await self.delegate.setFileAttributes(
                 to: command.attributes,
                 atPath: command.path,
-                context: SSHContext()
+                context: self.makeContext()
             )
         }
         _ = promise.futureResult.flatMap { status -> EventLoopFuture<Void> in
@@ -462,7 +468,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             try await self.delegate.addSymlink(
                 linkPath: command.linkPath,
                 targetPath: command.targetPath,
-                context: SSHContext()
+                context: self.makeContext()
             )
         }
         _ = promise.futureResult.flatMap { status -> EventLoopFuture<Void> in
@@ -484,7 +490,7 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
         promise.completeWithTask {
             try await self.delegate.readSymlink(
                 atPath: command.path,
-                context: SSHContext()
+                context: self.makeContext()
             )
         }
         _ = promise.futureResult.flatMap { components -> EventLoopFuture<Void> in

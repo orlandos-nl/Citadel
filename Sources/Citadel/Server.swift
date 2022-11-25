@@ -85,15 +85,17 @@ final class CitadelServerDelegate {
     public func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType) -> NIOCore.EventLoopFuture<Void> {
         switch channelType {
         case .session:
-            var handlers = [ChannelHandler]()
-            
-            handlers.append(SubsystemHandler(sftp: sftp))
-            
-            if let exec = exec {
-                handlers.append(ExecHandler(delegate: exec))
+            return channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { [sftp, exec] handler in
+                var handlers = [ChannelHandler]()
+                
+                handlers.append(SubsystemHandler(sftp: sftp))
+                
+                if let exec = exec {
+                    handlers.append(ExecHandler(delegate: exec, username: handler.username))
+                }
+                
+                return channel.pipeline.addHandlers(handlers)
             }
-            
-            return channel.pipeline.addHandlers(handlers)
         case .directTCPIP, .forwardedTCPIP:
             return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
         }

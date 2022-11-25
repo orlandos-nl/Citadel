@@ -5,6 +5,7 @@ public protocol ExecCommandContext {
 }
 
 public struct ExecOutputHandler {
+    public let username: String?
     public let stdinPipe = Pipe()
     public let stdoutPipe = Pipe()
     public let stderrPipe = Pipe()

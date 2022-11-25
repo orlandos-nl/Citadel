@@ -15,7 +15,9 @@ public protocol SFTPDirectoryHandle {
     func listFiles(context: SSHContext) async throws -> [SFTPFileListing]
 }
 
-public struct SSHContext {}
+public struct SSHContext {
+    public let username: String?
+}
 
 public protocol SFTPDelegate {
     func fileAttributes(atPath path: String, context: SSHContext) async throws -> SFTPFileAttributes
@@ -36,21 +38,24 @@ struct SFTPServerSubsystem {
         delegate: SFTPDelegate,
         logger: Logger
     ) -> EventLoopFuture<Void> {
-        let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
-        let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
-        let sftpInboundHandler = SFTPServerInboundHandler(
-            logger: logger,
-            delegate: delegate,
-            eventLoop: channel.eventLoop
-        )
-        
-        return channel.pipeline.addHandlers(
-            SSHChannelDataUnwrapper(),
-            SSHOutboundChannelDataWrapper(),
-            deserializeHandler,
-            serializeHandler,
-            sftpInboundHandler,
-            CloseErrorHandler(logger: logger)
-        )
+        channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
+            let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
+            let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
+            let sftpInboundHandler = SFTPServerInboundHandler(
+                logger: logger,
+                delegate: delegate,
+                eventLoop: channel.eventLoop,
+                username: handler.username
+            )
+            
+            return channel.pipeline.addHandlers(
+                SSHChannelDataUnwrapper(),
+                SSHOutboundChannelDataWrapper(),
+                deserializeHandler,
+                serializeHandler,
+                sftpInboundHandler,
+                CloseErrorHandler(logger: logger)
+            )
+        }
     }
 }

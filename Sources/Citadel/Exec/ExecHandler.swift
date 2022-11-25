@@ -35,13 +35,15 @@ final class ExecHandler: ChannelDuplexHandler {
     
     let delegate: ExecDelegate
     
-    init(delegate: ExecDelegate) {
+    init(delegate: ExecDelegate, username: String?) {
         self.delegate = delegate
+        self.username = username
     }
     
     var context: ExecCommandContext?
     var pipeChannel: Channel?
     var environment: [String: String] = [:]
+    let username: String?
     
     func handlerAdded(context: ChannelHandlerContext) {
         context.channel.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).whenFailure { error in
@@ -91,7 +93,7 @@ final class ExecHandler: ChannelDuplexHandler {
     }
     
     private func exec(_ event: SSHChannelRequestEvent.ExecRequest, channel: Channel) {
-        let handler = ExecOutputHandler { code in
+        let handler = ExecOutputHandler(username: username) { code in
             channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExitStatus(exitStatus: code)).whenComplete { _ in
                 channel.close(promise: nil)
             }
