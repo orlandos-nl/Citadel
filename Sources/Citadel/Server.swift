@@ -82,20 +82,18 @@ final class CitadelServerDelegate {
     
     fileprivate init() {}
     
-    public func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType) -> NIOCore.EventLoopFuture<Void> {
+    public func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType, username: String?) -> NIOCore.EventLoopFuture<Void> {
         switch channelType {
         case .session:
-            return channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { [sftp, exec] handler in
-                var handlers = [ChannelHandler]()
-                
-                handlers.append(SubsystemHandler(sftp: sftp))
-                
-                if let exec = exec {
-                    handlers.append(ExecHandler(delegate: exec, username: handler.username))
-                }
-                
-                return channel.pipeline.addHandlers(handlers)
+            var handlers = [ChannelHandler]()
+            
+            handlers.append(SubsystemHandler(sftp: self.sftp))
+            
+            if let exec = self.exec {
+                handlers.append(ExecHandler(delegate: exec, username: username))
             }
+            
+            return channel.pipeline.addHandlers(handlers)
         case .directTCPIP, .forwardedTCPIP:
             return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
         }
@@ -160,7 +158,11 @@ public final class SSHServer {
                     NIOSSHHandler(
                         role: .server(server),
                         allocator: channel.allocator,
-                        inboundChildChannelInitializer: delegate.initializeSshChildChannel
+                        inboundChildChannelInitializer: { childChannel, channelType in
+                            channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
+                                delegate.initializeSshChildChannel(childChannel, channelType, username: handler.username)
+                            }
+                        }
                     ),
                     CloseErrorHandler(logger: logger)
                 ])
