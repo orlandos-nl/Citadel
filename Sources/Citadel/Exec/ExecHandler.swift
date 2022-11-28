@@ -142,10 +142,14 @@ final class ExecHandler: ChannelDuplexHandler {
             self.pipeChannel = pipeChannel
             let start = channel.eventLoop.makePromise(of: Void.self)
             start.completeWithTask {
-                self.context = try await self.delegate.start(
-                    command: event.command,
-                    outputHandler: handler
-                )
+                do {
+                    self.context = try await self.delegate.start(
+                        command: event.command,
+                        outputHandler: handler
+                    )
+                } catch {
+                    try await pipeChannel.close(mode: .all)
+                }
             }
             return start.futureResult
         }.map {
