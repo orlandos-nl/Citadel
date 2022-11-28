@@ -9,19 +9,20 @@ import NIOSSH
 // Noteable links:
 // https://dnaeon.github.io/openssh-private-key-binary-format/
 
-internal protocol ParsableFromByteBuffer {
+internal protocol ByteBufferConvertible {
     static func read(consuming buffer: inout ByteBuffer) throws -> Self
+    func write(to buffer: inout ByteBuffer) -> Int
 }
 
-protocol OpenSSHPrivateKey: ParsableFromByteBuffer {
+protocol OpenSSHPrivateKey: ByteBufferConvertible {
     static var privateKeyPrefix: String { get }
     static var publicKeyPrefix: String { get }
     static var keyType: OpenSSH.KeyType { get }
     
-    associatedtype PublicKey: ParsableFromByteBuffer
+    associatedtype PublicKey: ByteBufferConvertible
 }
 
-extension Insecure.RSA.PrivateKey: ParsableFromByteBuffer {
+extension Insecure.RSA.PrivateKey: ByteBufferConvertible {
     static func read(consuming buffer: inout ByteBuffer) throws -> Self {
         guard
             let nBytesLength = buffer.readInteger(as: UInt32.self),
@@ -46,24 +47,92 @@ extension Insecure.RSA.PrivateKey: ParsableFromByteBuffer {
 
         return self.init(privateExponent: privateExponent, publicExponent: publicExponent, modulus: modulus)
     }
+    
+    func write(to buffer: inout ByteBuffer) -> Int {
+        0
+    }
 }
 
-extension Curve25519.Signing.PrivateKey: ParsableFromByteBuffer {
+extension Curve25519.Signing.PrivateKey: ByteBufferConvertible {
     static func read(consuming buffer: inout ByteBuffer) throws -> Self {
         guard let publicKey = buffer.readSSHBuffer() else {
             throw InvalidKey()
         }
-
+        
+        guard var privateKey = buffer.readSSHBuffer() else {
+            throw InvalidKey()
+        }
+        
         guard
-            var buffer = buffer.readSSHBuffer(),
-            let privateKeyBytes = buffer.readBytes(length: 32),
-            let publicKeyBytes = buffer.readSlice(length: buffer.readerIndex),
-            publicKeyBytes == publicKey
+            let privateKeyBytes = privateKey.readBytes(length: 32),
+            let publicKeyBytes = privateKey.readSlice(length: privateKey.readableBytes)
         else {
             throw InvalidKey()
         }
         
+        guard publicKeyBytes == publicKey else {
+            throw InvalidKey()
+        }
+        
         return try Self.init(rawRepresentation: privateKeyBytes)
+    }
+    
+    @discardableResult
+    func write(to buffer: inout ByteBuffer) -> Int {
+        let n = buffer.writeSSHString(publicKey.rawRepresentation)
+        return n + buffer.writeCompositeSSHString { buffer in
+            let n = buffer.writeData(self.rawRepresentation)
+            return n + buffer.writeData(self.publicKey.rawRepresentation)
+        }
+    }
+    
+    public func makeSSHRepresentation(comment: String = "") -> String {
+        let allocator = ByteBufferAllocator()
+        
+        var buffer = allocator.buffer(capacity: Int(UInt16.max))
+        buffer.reserveCapacity(Int(UInt16.max))
+        
+        buffer.writeString("openssh-key-v1")
+        buffer.writeInteger(0x00 as UInt8)
+        
+        buffer.writeSSHString("none") // cipher
+        buffer.writeSSHString("none") // kdf
+        buffer.writeSSHString([UInt8]()) // kdf options
+        
+        buffer.writeInteger(1 as UInt32)
+        
+        var publicKeyBuffer = allocator.buffer(capacity: Int(UInt8.max))
+        publicKeyBuffer.writeSSHString("ssh-ed25519")
+        publicKeyBuffer.writeCompositeSSHString { buffer in
+            publicKey.write(to: &buffer)
+        }
+        buffer.writeSSHString(&publicKeyBuffer)
+        
+        var privateKeyBuffer = allocator.buffer(capacity: Int(UInt8.max))
+        
+        // checksum
+        let checksum = UInt32.random(in: .min ... .max)
+        privateKeyBuffer.writeInteger(checksum)
+        privateKeyBuffer.writeInteger(checksum)
+        
+        privateKeyBuffer.writeSSHString("ssh-ed25519")
+        write(to: &privateKeyBuffer)
+        privateKeyBuffer.writeSSHString(comment) // comment
+        let neededBytes = UInt8(OpenSSH.Cipher.none.blockSize - (privateKeyBuffer.writerIndex % OpenSSH.Cipher.none.blockSize))
+        if neededBytes > 0 {
+            for i in 1...neededBytes {
+                privateKeyBuffer.writeInteger(i)
+            }
+        }
+        buffer.writeSSHString(&privateKeyBuffer)
+        
+        let base64 = buffer.readData(length: buffer.readableBytes)!.base64EncodedString()
+        
+        return """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        \(base64)
+        -----END OPENSSH PRIVATE KEY-----
+        """
     }
 }
 
@@ -137,6 +206,15 @@ enum OpenSSH {
             switch self {
             case .none:
                 return 0
+            case .aes128ctr, .aes256ctr:
+                return 16
+            }
+        }
+        
+        var blockSize: Int {
+            switch self {
+            case .none:
+                return 8
             case .aes128ctr, .aes256ctr:
                 return 16
             }
@@ -241,6 +319,8 @@ extension OpenSSH.PrivateKey {
             throw InvalidKey()
         }
         
+        print(Array(data))
+        
         var buffer = ByteBuffer(data: data)
         
         guard
@@ -284,7 +364,11 @@ extension OpenSSH.PrivateKey {
             try cipher.decryptBuffer(&privateKeyBuffer, key: key, iv: iv)
         }
         
-        guard privateKeyBuffer.readInteger(as: UInt64.self) != nil else {
+        guard
+            let check0 = privateKeyBuffer.readInteger(as: UInt32.self),
+            let check1 = privateKeyBuffer.readInteger(as: UInt32.self),
+            check0 == check1
+        else {
             throw InvalidKey()
         }
         
@@ -298,15 +382,22 @@ extension OpenSSH.PrivateKey {
         
         self.privateKey = try SSHKey.read(consuming: &privateKeyBuffer)
         
-        guard let comment = privateKeyBuffer.readSSHString() else { throw InvalidKey() }
+        guard let comment = privateKeyBuffer.readSSHString() else {
+            throw InvalidKey()
+        }
         self.comment = comment
         
         let paddingLength = privateKeyBuffer.readableBytes
+        
         guard
-            paddingLength < 16,
+            paddingLength < cipher.blockSize,
             let padding = privateKeyBuffer.readBytes(length: paddingLength)
         else {
             throw InvalidKey()
+        }
+        
+        if paddingLength == 0 {
+            return
         }
         
         for i in 1..<paddingLength {

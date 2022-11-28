@@ -109,4 +109,20 @@ final class KeyTests: XCTestCase {
         let openSSHPrivateKey = try Curve25519.Signing.PrivateKey(sshEd25519: key)
         XCTAssertNotNil(openSSHPrivateKey)
     }
+    
+    func testED25519PrivateKeyWithoutSpacing() throws {
+        let key = """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQyNTUxOQAAACAi19yxbgtZH0Y26GZGr2vyVErGFskeOY9HwHLxYbmkAwAAAKAPNV8QDzVfEAAAAAtzc2gtZWQyNTUxOQAAACAi19yxbgtZH0Y26GZGr2vyVErGFskeOY9HwHLxYbmkAwAAAED3UDHB29MB7vQDpb7PGFjEMAYT9FzpnadYWrCPSUma5SLX3LFuC1kfRjboZkava/JUSsYWyR45j0fAcvFhuaQDAAAAHGphYXBASmFhcHMtTWFjQm9vay1Qcm8ubG9jYWwB
+        -----END OPENSSH PRIVATE KEY-----
+        """
+        
+        let privateKey = try Curve25519.Signing.PrivateKey(sshEd25519: key)
+        XCTAssertNotNil(privateKey)
+        
+        let key2 = privateKey.makeSSHRepresentation(comment: "jaap@Jaaps-MacBook-Pro.local")
+        print(key2)
+        let privateKey2 = try Curve25519.Signing.PrivateKey(sshEd25519: key2)
+        XCTAssertEqual(privateKey.rawRepresentation, privateKey2.rawRepresentation)
+    }
 }
