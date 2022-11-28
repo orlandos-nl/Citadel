@@ -19,6 +19,12 @@ import NIOFoundationCompat
 import NIOPosix
 import NIOSSH
 
+#if os(Linux)
+import Glibc
+#else
+import Darwin
+#endif
+
 enum SSHServerError: Error {
     case invalidCommand
     case invalidDataType
@@ -134,8 +140,8 @@ final class ExecHandler: ChannelDuplexHandler {
                 .channelInitializer { pipeChannel in
                     pipeChannel.pipeline.addHandlers(SSHInboundChannelDataWrapper(), theirs)
                 }.withPipes(
-                    inputDescriptor: handler.stdoutPipe.fileHandleForReading.fileDescriptor,
-                    outputDescriptor: handler.stdinPipe.fileHandleForWriting.fileDescriptor
+                    inputDescriptor: dup(handler.stdoutPipe.fileHandleForReading.fileDescriptor),
+                    outputDescriptor: dup(handler.stdinPipe.fileHandleForWriting.fileDescriptor)
                 )
         }.flatMap { pipeChannel -> EventLoopFuture<Channel> in
             self.pipeChannel = pipeChannel
