@@ -68,6 +68,10 @@ final class ExecHandler: ChannelDuplexHandler {
             Task {
                 try await delegate.setEnvironmentValue(event.value, forKey: event.name)
             }
+        case ChannelEvent.inputClosed:
+            Task {
+                try await self.context?.inputClosed()
+            }
         default:
             context.fireUserInboundEventTriggered(event)
         }
