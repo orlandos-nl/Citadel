@@ -319,8 +319,6 @@ extension OpenSSH.PrivateKey {
             throw InvalidKey()
         }
         
-        print(Array(data))
-        
         var buffer = ByteBuffer(data: data)
         
         guard

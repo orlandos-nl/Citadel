@@ -168,7 +168,6 @@ final class Citadel2Tests: XCTestCase {
         for _ in 0..<10 {
             var data = try await file.read(from: UInt64(i * 32_768), length: 32_768)
             i += 1
-            print(data.readString(length: data.readableBytes)!)
         }
     }
 }
