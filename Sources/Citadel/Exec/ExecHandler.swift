@@ -97,10 +97,9 @@ final class ExecHandler: ChannelDuplexHandler {
     }
     
     private func exec(_ event: SSHChannelRequestEvent.ExecRequest, channel: Channel) {
+        let successPromise = channel.eventLoop.makePromise(of: Int.self)
         let handler = ExecOutputHandler(username: username) { code in
-            channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExitStatus(exitStatus: code)).whenComplete { _ in
-                channel.close(promise: nil)
-            }
+            successPromise.succeed(code)
         } onFailure: { _ in
             if event.wantReply {
                 channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
@@ -138,7 +137,7 @@ final class ExecHandler: ChannelDuplexHandler {
                     inputDescriptor: handler.stdoutPipe.fileHandleForReading.fileDescriptor,
                     outputDescriptor: handler.stdinPipe.fileHandleForWriting.fileDescriptor
                 )
-        }.flatMap { pipeChannel -> EventLoopFuture<Void> in
+        }.flatMap { pipeChannel -> EventLoopFuture<Channel> in
             self.pipeChannel = pipeChannel
             let start = channel.eventLoop.makePromise(of: Void.self)
             start.completeWithTask {
@@ -151,18 +150,34 @@ final class ExecHandler: ChannelDuplexHandler {
                     try await pipeChannel.close(mode: .all)
                 }
             }
-            return start.futureResult
-        }.map {
-            if event.wantReply {
-                channel.triggerUserOutboundEvent(ChannelSuccessEvent(), promise: nil)
+            
+            return start.futureResult.flatMap {
+                if event.wantReply {
+                    return channel.triggerUserOutboundEvent(ChannelSuccessEvent()).map {
+                        pipeChannel
+                    }
+                } else {
+                    return channel.eventLoop.makeSucceededFuture(pipeChannel)
+                }
             }
-        }.whenFailure { _ in
-            if event.wantReply {
-                channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+        }.flatMap { pipeChannel in
+            successPromise.futureResult.flatMap { code in
+                pipeChannel.close(mode: .all).map { code }
+            }
+        }.flatMap { code in
+            channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExitStatus(exitStatus: code))
+        }.whenComplete { result in
+            switch result {
+            case .success:
+                channel.close(promise: nil)
+            case .failure:
+                if event.wantReply {
+                    channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
+                        channel.close(promise: nil)
+                    }
+                } else {
                     channel.close(promise: nil)
                 }
-            } else {
-                channel.close(promise: nil)
             }
         }
     }
