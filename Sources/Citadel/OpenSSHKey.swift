@@ -128,11 +128,12 @@ extension Curve25519.Signing.PrivateKey: ByteBufferConvertible {
         
         let base64 = buffer.readData(length: buffer.readableBytes)!.base64EncodedString()
         
-        return """
-        -----BEGIN OPENSSH PRIVATE KEY-----
-        \(base64)
-        -----END OPENSSH PRIVATE KEY-----
-        """
+        var string = "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+        string += base64
+        string += "\n"
+        string += "-----END OPENSSH PRIVATE KEY-----"
+        
+        return string
     }
 }
 
