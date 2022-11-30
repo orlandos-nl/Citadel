@@ -131,7 +131,7 @@ extension Curve25519.Signing.PrivateKey: ByteBufferConvertible {
         var string = "-----BEGIN OPENSSH PRIVATE KEY-----\n"
         string += base64
         string += "\n"
-        string += "-----END OPENSSH PRIVATE KEY-----"
+        string += "-----END OPENSSH PRIVATE KEY-----\n"
         
         return string
     }
