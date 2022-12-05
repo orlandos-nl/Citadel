@@ -2,9 +2,9 @@ import NIO
 import Foundation
 
 public struct SFTPPathComponent {
-    let filename: String
-    let longname: String
-    let attributes: SFTPFileAttributes
+    public let filename: String
+    public let longname: String
+    public let attributes: SFTPFileAttributes
     
     public init(filename: String, longname: String, attributes: SFTPFileAttributes) {
         self.filename = filename
