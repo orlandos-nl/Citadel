@@ -28,6 +28,23 @@ let client = try await SSHClient.connect(
 
 Using that client, we support a couple types of operations:
 
+### SSH Proxies
+
+```swift
+// The address that is presented as the locally exposed interface
+// This is purely communicated to the SSH server
+let address = try SocketAddress(ipAddress: "fe80::1", port: 27017)
+let configuredProxyChannel = try await client.createDirectTCPIPChannel(
+    using: SSHChannelType.DirectTCPIP(
+        targetHost: "localhost", // MongoDB host 
+        targetPort: 27017, // MongoDB port
+        originatorAddress: address
+    )
+) { proxyChannel in
+  proxyChannel.pipeline.addHandlers(...)
+}
+```
+
 ### Executing Commans
 
 You can execute a command through SSH using the following code:
@@ -144,6 +161,13 @@ Whether you simulate a process, or hook up a real child-process, the requirement
 When you implement SFTP in Citadel, you're responsible for taking care of logistics. Be it through a backing MongoDB store, a real filesystem, or your S3 bucket.
 
 ## Helpers
+
+The most important helper most people need is OpenSSH key parsing. We support extensions on PrivateKey types such as our own `Insecure.RSA.PrivateKey`, as well as existing SwiftCrypto types like `Curve25519.Signing.PrivateKey`:
+
+```swift
+let sshFile = try String(contentsOf: ..)
+let privateKey = try Insecure.RSA.PrivateKey(sshRsa: sshFile)
+```
 
 ## FAQ
 
