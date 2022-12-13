@@ -45,7 +45,7 @@ let configuredProxyChannel = try await client.createDirectTCPIPChannel(
 }
 ```
 
-### Executing Commans
+### Executing Commands
 
 You can execute a command through SSH using the following code:
 
