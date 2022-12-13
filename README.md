@@ -154,7 +154,7 @@ func start(command: String, outputHandler: ExecOutputHandler) async throws -> Ex
 
 The `setEnvironmentValue` function adds an environment variable, which you can pass onto child processes. The `start` command simply executed the command "in the shell". How and if you process that command is up to you. The executed `command` is inputted as the first argument, and the second argument (the `ExecOutputHandler`), contains the authenticated user, Pipes for `stdin`, `stdout` and `stderr` as well as some function calls for indicating a process has exited.
 
-Whether you simulate a process, or hook up a real child-process, the requirements are the same. You **must** provide an exit code or throw an error out of the exeucing function. You can also `fail` on the outputHandler the process using an error. Finally, you'll have to return an `ExecCommandContext` that represents your process. This can receive remote `terminate` signals, or receive a notification that `stdin` was closed through `inputClosed`.
+Whether you simulate a process, or hook up a real child-process, the requirements are the same. You **must** provide an exit code or throw an error out of the executing function. You can also `fail` on the outputHandler the process using an error. Finally, you'll have to return an `ExecCommandContext` that represents your process. This can receive remote `terminate` signals, or receive a notification that `stdin` was closed through `inputClosed`.
 
 ### SFTP Server
 
@@ -189,7 +189,7 @@ You can then use these in an SSHClient, together with any other potential protoc
 
 ```swift
 let client = try await SSHClient.connect(
-    sshHost: "example.com",
+    host: "example.com",
     authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
     hostKeyValidator: .acceptAnything(), // Please use another validator if at all possible, it's insecure
     reconnect: .never,
