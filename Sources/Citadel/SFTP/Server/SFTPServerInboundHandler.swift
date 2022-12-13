@@ -3,7 +3,7 @@ import NIO
 import NIOSSH
 import Logging
 
-public struct SFTPDirectoryHandleIterator {
+struct SFTPDirectoryHandleIterator {
     var listing = [SFTPFileListing]()
 }
 

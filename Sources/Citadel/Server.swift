@@ -100,6 +100,10 @@ final class CitadelServerDelegate {
     }
 }
 
+/// An SSH Server implementation.
+/// This class is used to start an SSH server on a specified host and port.
+/// The server can be closed using the `close()` method.
+/// - Note: This class is not thread safe.
 public final class SSHServer {
     let channel: Channel
     let delegate: CitadelServerDelegate
@@ -113,19 +117,29 @@ public final class SSHServer {
         self.logger = logger
         self.delegate = delegate
     }
+
     
+    /// Enables SFTP for SSH session targetting this SSH Server. 
+    /// Once SFTP is enabled, the SSH session can be used to send and receive files.
+    /// - Parameter delegate: The delegate object that will handle SFTP events.
+    /// - Note: SFTP is disabled by default.
     public func enableSFTP(withDelegate delegate: SFTPDelegate) {
         self.delegate.sftp = delegate
     }
     
+    /// Enables Exec for SSH session targetting this SSH Server.
+    /// Once Exec is enabled, the SSH session can be used to execute commands.
+    /// - Note: Exec is disabled by default.
     public func enableExec(withDelegate delegate: ExecDelegate) {
         self.delegate.exec = delegate
     }
     
+    /// Closes the SSH Server, stopping new connections from coming in.
     public func close() async throws {
         try await channel.close()
     }
     
+    /// Starts a new SSH Server on the specified host and port.
     public static func host(
         host: String,
         port: Int,
@@ -176,6 +190,7 @@ public final class SSHServer {
     }
 }
 
+/// A set of options that can be applied to the SSH protocol.
 public struct SSHProtocolOption: Hashable {
     internal enum Value: Hashable {
         case maximumPacketSize(Int)
@@ -183,6 +198,7 @@ public struct SSHProtocolOption: Hashable {
     
     internal let value: Value
     
+    /// The maximum packet size that can be sent over the SSH connection.
     public static func maximumPacketSize(_ size: Int) -> Self {
         return .init(value: .maximumPacketSize(size))
     }

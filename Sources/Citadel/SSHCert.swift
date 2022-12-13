@@ -28,6 +28,10 @@ extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
     static var privateKeyPrefix: String { "ssh-ed25519" }
     static var keyType: OpenSSH.KeyType { .sshED25519 }
     
+    /// Creates a new Curve25519 private key from an OpenSSH private key string.
+    /// - Parameters:
+    ///  - key: The OpenSSH private key string.
+    /// - decryptionKey: The key to decrypt the private key with, if any.
     public init(sshEd25519 data: Data, decryptionKey: Data? = nil) throws {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshEd25519: string, decryptionKey: decryptionKey)
@@ -36,6 +40,10 @@ extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
         }
     }
     
+    /// Creates a new Curve25519 private key from an OpenSSH private key string.
+    /// - Parameters:
+    ///  - key: The OpenSSH private key string.
+    /// - decryptionKey: The key to decrypt the private key with, if any.
     public init(sshEd25519 key: String, decryptionKey: Data? = nil) throws {
         self = try OpenSSH.PrivateKey<Curve25519.Signing.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
     }
@@ -54,6 +62,10 @@ extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
     static var privateKeyPrefix: String { "ssh-rsa" }
     static var keyType: OpenSSH.KeyType { .sshRSA }
     
+    /// Creates a new Curve25519 private key from an OpenSSH private key string.
+    /// - Parameters:
+    ///  - key: The OpenSSH private key string.
+    /// - decryptionKey: The key to decrypt the private key with, if any.
     public convenience init(sshRsa data: Data, decryptionKey: Data? = nil) throws {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshRsa: string, decryptionKey: decryptionKey)
@@ -62,6 +74,10 @@ extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
         }
     }
     
+    /// Creates a new Curve25519 private key from an OpenSSH private key string.
+    /// - Parameters:
+    ///  - key: The OpenSSH private key string.
+    /// - decryptionKey: The key to decrypt the private key with, if any.
     public convenience init(sshRsa key: String, decryptionKey: Data? = nil) throws {
         let privateKey = try OpenSSH.PrivateKey<Insecure.RSA.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
         let publicKey = privateKey.publicKey as! Insecure.RSA.PublicKey

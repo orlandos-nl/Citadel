@@ -35,6 +35,7 @@ final class DataToBufferCodec: ChannelDuplexHandler {
 }
 
 extension SSHClient {
+    /// Creates a new direct TCP/IP channel. This channel type is used to open a TCP/IP connection to a remote host, through the remote SSH server.
     public func createDirectTCPIPChannel(
         using settings: SSHChannelType.DirectTCPIP,
         initialize: @escaping (Channel) -> EventLoopFuture<Void>

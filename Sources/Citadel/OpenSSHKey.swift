@@ -86,6 +86,7 @@ extension Curve25519.Signing.PrivateKey: ByteBufferConvertible {
         }
     }
     
+    /// Creates a new OpenSSH formatted private key
     public func makeSSHRepresentation(comment: String = "") -> String {
         let allocator = ByteBufferAllocator()
         

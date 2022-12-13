@@ -24,7 +24,6 @@ internal struct _SSHReconnectMode {
     internal static let never = _SSHReconnectMode(mode: .never)
 }
 
-// TODO: Reconnect delegate
 public struct SSHReconnectMode: Equatable {
     internal enum _Mode {
         case once, always, never
@@ -32,7 +31,12 @@ public struct SSHReconnectMode: Equatable {
     
     let mode: _Mode
     
+    /// Reconnect to the same host and port once.
     public static let once = SSHReconnectMode(mode: .once)
+
+    /// Reconnect to the same host and port every time the connection is lost.
     public static let always = SSHReconnectMode(mode: .always)
+
+    /// Never reconnect.
     public static let never = SSHReconnectMode(mode: .never)
 }

@@ -3,7 +3,7 @@ import NIO
 import NIOSSH
 import Logging
 
-/// The SFTP client does not concern itself with the created SSH subsystem
+/// The SFTP client does not concern itself with the created SSH subsystem channel.
 ///
 /// Per specification, SFTP could be used over other transport layers, too.
 public final class SFTPClient {
@@ -95,6 +95,7 @@ public final class SFTPClient {
         }.get()
     }
     
+    /// List the contents of a directory on the SFTP server.
     public func listDirectory(
         atPath path: String
     ) async throws -> [SFTPMessage.Name] {
@@ -141,6 +142,7 @@ public final class SFTPClient {
         return names
     }
     
+    /// Get the attributes of a file on the SFTP server. If the file does not exist, an error is thrown.
     public func getAttributes(
         at filePath: String
     ) async throws -> SFTPFileAttributes {
@@ -215,6 +217,7 @@ public final class SFTPClient {
         }
     }
     
+    /// Create a directory at the specified path on the SFTP server. If the directory already exists, an error is thrown.
     public func createDirectory(
         atPath path: String,
         attributes: SFTPFileAttributes = .none

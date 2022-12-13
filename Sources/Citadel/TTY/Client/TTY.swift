@@ -78,6 +78,10 @@ final class TTYHandler: ChannelDuplexHandler {
 }
 
 extension SSHClient {
+    /// Executes a command on the remote server. This will return the output of the command. If the command fails, the error will be thrown. If the output is too large, the command will fail.
+    /// - Parameters:
+    ///  - command: The command to execute.
+    /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
     public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         

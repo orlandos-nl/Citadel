@@ -43,6 +43,7 @@ public final class SFTPFile {
         assert(!self.client.isActive || !self.isActive, "SFTPFile deallocated without being closed first")
     }
     
+    /// Read the attributes of the file. This is equivalent to the `stat()` system call.
     public func readAttributes() async throws -> SFTPFileAttributes {
         guard self.isActive else { throw SFTPError.fileHandleInvalid }
         

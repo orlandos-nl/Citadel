@@ -2,12 +2,16 @@ import NIO
 import NIOSSH
 
 public struct SSHAlgorithms {
+    /// Represents a modification to a list of items.
+    ///
+    /// - replace: Replaces the existing list of items with the given list of items.
+    /// - add: Adds the given list of items to the list of items.
     public enum Modification<T> {
         case replace(with: [T])
         case add([T])
     }
     
-    /// The enabled TransportProtectionSchemes
+    /// The enabled TransportProtectionSchemes.
     public var transportProtectionSchemes: Modification<NIOSSHTransportProtection.Type>?
     
     /// The enabled KeyExchangeAlgorithms
@@ -56,6 +60,7 @@ public struct SSHAlgorithms {
     public init() {}
 }
 
+/// Represents an SSH connection.
 public final class SSHClient {
     private(set) var session: SSHClientSession
     private var userInitiatedClose = false
@@ -64,6 +69,8 @@ public final class SSHClient {
     internal var connectionSettings = SSHConnectionSettings()
     private let algorithms: SSHAlgorithms
     private let protocolOptions: Set<SSHProtocolOption>
+
+    /// The event loop that this SSH connection is running on.
     public var eventLoop: EventLoop {
         session.channel.eventLoop
     }
@@ -82,6 +89,14 @@ public final class SSHClient {
         self.protocolOptions = protocolOptions
     }
     
+    /// Connects to an SSH server.
+    /// - Parameters:
+    ///  - channel: The channel to use for the connection.
+    /// - authenticationMethod: The authentication method to use. See `SSHAuthenticationMethod` for more information.
+    /// - hostKeyValidator: The host key validator to use. See `SSHHostKeyValidator` for more information.
+    /// - algorithms: The algorithms to use. See `SSHAlgorithms` for more information.
+    /// - protocolOptions: The protocol options to use. See `SSHProtocolOption` for more information.
+    /// - Returns: An SSH client.
     public static func connect(
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
@@ -105,6 +120,17 @@ public final class SSHClient {
         )
     }
     
+    /// Connects to an SSH server.
+    /// - Parameters:
+    /// - host: The host to connect to.
+    /// - port: The port to connect to. Defaults to 22.
+    /// - authenticationMethod: The authentication method to use. See `SSHAuthenticationMethod` for more information.
+    /// - hostKeyValidator: The host key validator to use. See `SSHHostKeyValidator` for more information.
+    /// - reconnect: The reconnect mode to use. See `SSHReconnectMode` for more information.
+    /// - algorithms: The algorithms to use. See `SSHAlgorithms` for more information.
+    /// - protocolOptions: The protocol options to use. See `SSHProtocolOption` for more information.
+    /// - group: The event loop group to use. Defaults to a single-threaded event loop group.
+    /// - Returns: An SSH client.
     public static func connect(
         host: String,
         port: Int = 22,

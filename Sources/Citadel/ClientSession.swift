@@ -5,6 +5,8 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     typealias InboundIn = Any
 
     private let promise: EventLoopPromise<Void>
+
+    /// A future that will be fulfilled when the handshake is complete.
     public var authenticated: EventLoopFuture<Void> {
         promise.futureResult
     }
@@ -40,6 +42,12 @@ final class SSHClientSession {
         self.sshHandler = sshHandler
     }
     
+    /// Creates a new SSH session on the given channel. This allows you to use an existing channel for the SSH session.
+    /// - authenticationMethod: The authentication method to use, see `SSHAuthenticationMethod`.
+    /// - hostKeyValidator: The host key validator to use, see `SSHHostKeyValidator`.
+    /// - algorithms: The algorithms to use, will use the default algorithms if not specified.
+    /// - protocolOptions: The protocol options to use, will use the default options if not specified.
+    /// - group: The event loop group to use, will use a new group with one thread if not specified.
     public static func connect(
         on channel: Channel,
         authenticationMethod: SSHAuthenticationMethod,
@@ -75,6 +83,15 @@ final class SSHClientSession {
         }.get()
     }
     
+    /// Creates a new SSH session on a new channel. This will connect to the given host and port.
+    /// - Parameters:
+    ///  - host: The host to connect to.
+    /// - port: The port to connect to.
+    /// - authenticationMethod: The authentication method to use, see `SSHAuthenticationMethod`.
+    /// - hostKeyValidator: The host key validator to use, see `SSHHostKeyValidator`.
+    /// - algorithms: The algorithms to use, will use the default algorithms if not specified.
+    /// - protocolOptions: The protocol options to use, will use the default options if not specified.
+    /// - group: The event loop group to use, will use a new group with one thread if not specified.
     public static func connect(
         host: String,
         port: Int = 22,
@@ -122,6 +139,7 @@ final class SSHClientSession {
 
 public struct InvalidHostKey: Error {}
 
+/// A host key validator that can be used to validate an SSH host key. This can be used to validate the host key against a set of trusted keys, or to accept any key.
 public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
     private enum Method {
         case trustedKeys(Set<NIOSSHPublicKey>)
@@ -146,14 +164,18 @@ public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
         }
     }
     
+    /// Creates a new host key validator that will validate the host key against the given set of trusted keys. If the host key is not in the set, the validation will fail.
+    /// - Parameter keys: The set of trusted keys.
     public static func trustedKeys(_ keys: Set<NIOSSHPublicKey>) -> SSHHostKeyValidator {
         SSHHostKeyValidator(method: .trustedKeys(keys))
     }
     
+    /// Creates a new host key validator that will accept any host key. This is not recommended for production use.
     public static func acceptAnything() -> SSHHostKeyValidator {
         SSHHostKeyValidator(method: .acceptAnything)
     }
     
+    /// Creates a new host key validator that will use the given custom validator. This can be used to implement custom host key validation logic.
     public static func custom(_ validator: NIOSSHClientServerAuthenticationDelegate) -> SSHHostKeyValidator {
         SSHHostKeyValidator(method: .custom(validator))
     }
