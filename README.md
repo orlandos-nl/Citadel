@@ -19,7 +19,7 @@ Citadel's `SSHClient` needs a connection to a SSH server first:
 
 ```swift
 let client = try await SSHClient.connect(
-    sshHost: "example.com",
+    host: "example.com",
     authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
     hostKeyValidator: .acceptAnything(), // Please use another validator if at all possible, it's insecure
     reconnect: .never
