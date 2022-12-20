@@ -2,17 +2,6 @@
 
 Citadel is a high level API around [NIOSSH](https://github.com/apple/swift-nio-ssh). It aims to add what's out of scope for NIOSSH, lending code from my private tools.
 
-It features the following helpers:
-
-- [x] TCP-IP forwarding child channels
-- [x] Basic SFTP Client
-- [x] SFTP Server
-- [x] SSH Exec Command Server
-- [x] TTY support
-- [x] SSH Key format parsing
-
-[Read the docs](https://orlandos.nl/docs/citadel)
-
 ## Client Usage
 
 Citadel's `SSHClient` needs a connection to a SSH server first:
@@ -28,7 +17,7 @@ let client = try await SSHClient.connect(
 
 Using that client, we support a couple types of operations:
 
-### SSH Proxies
+### TCP-IP Forwarding (Proxying)
 
 ```swift
 // The address that is presented as the locally exposed interface
@@ -45,6 +34,8 @@ let configuredProxyChannel = try await client.createDirectTCPIPChannel(
 }
 ```
 
+This will create a channel that is connected to the SSH server, and then forwarded to the target host. This is useful for proxying TCP-IP connections, such as MongoDB, Redis, MySQL, etc.
+
 ### Executing Commands
 
 You can execute a command through SSH using the following code:
@@ -55,74 +46,101 @@ let stdout = try await client.executeCommand("ls -la ~")
 
 The `executeCommand` function accumulated information into a contiguous `ByteBuffer`. This is useful for non-interactive commands such as `cat` and `ls`. Citadel currently does not expose APIs for streaming into a process' `stdin` or streaming the `stdout` elsewhere. If you want this, please create an issue.
 
-### SFTP
+### SFTP Client
 
 To begin with SFTP, you must instantiate an SFTPClient based on your SSHClient:
 
 ```swift
+// Open an SFTP session on the SSH client
 let sftp = try await client.openSFTP()
-```
 
-From here, you can do a variety of filesystem operations:
-
-**Listing a Directory's Contents:**
-
-```swift
+// List the contents of the /etc directory
 let directoryContents = try await sftp.listDirectory(atPath: "/etc")
-```
 
-**Creating a directory:**
-
-```swift
+// Create a directory
 try await sftp.createDirectory(atPath: "/etc/custom-folder")
-```
 
-**Opening a file:**
-
-```swift
+// Open a file
 let resolv = try await sftp.openFile(filePath: "/etc/resolv.conf", flags: .read)
-```
 
-**Reading a file in bulk:**
-
-```swift
+// Read a file in bulk
 let resolvContents: ByteBuffer = try await resolv.readAll()
-```
 
-**Reading a file in chunks:**
-
-```swift
+// Read a file in chunks
 let chunk: ByteBuffer = try await resolv.read(from: index, length: maximumByteCount)
-```
 
-**Closing a file:**
-
-```swift
+// Close a file
 try await resolv.close()
-```
 
-Note that this is required if you open the file yourself. If you want Citadel to manage closing the file, use:
+// Write to a file
+let file = try await sftp.openFile(filePath: "/etc/resolv.conf", flags: [.read, .write, .forceCreate])
+let fileWriterIndex = 0
+try await file.write(ByteBuffer(string: "Hello, world", at: fileWriterIndex)
+try await file.close()
 
-```swift
+// Read a file using a helper. This closes the file automatically
 let data = try await sftp.withFile(
     filePath: "/etc/resolv.conf",
     flags: .read
 ) { file in
     try await file.readAll()
 }
-```
 
-**Writing to a file:**
-
-```swift
-let file = try await sftp.openFile(filePath: "/etc/resolv.conf", flags: [.read, .write, .forceCreate])
-let fileWriterIndex = 0
-try await file.write(ByteBuffer(string: "Hello, world", at: fileWriterIndex)
+// Close the SFTP session
+try await sftp.close()
 ```
 
 ## Servers
 
 To use Citadel, first you need to create & start an SSH server, using your own authentication delegate:
+
+```swift
+import NIOSSH
+import Citadel
+
+// Create a custom authentication delegate that uses MongoDB to authenticate users
+// This is just an example, you can use any database you want
+// You can use public key authentication, password authentication, or both.
+struct MyCustomMongoDBAuthDelegate: NIOSSHServerUserAuthenticationDelegate {
+    let db: MongoKitten.Database
+
+    let supportedAuthenticationMethods: NIOSSHAvailableUserAuthenticationMethods = [.password, .publicKey]
+    
+    func requestReceived(request: NIOSSHUserAuthenticationRequest, responsePromise: EventLoopPromise<NIOSSHUserAuthenticationOutcome>) {
+        responsePromise.completeWithTask {
+            // Authenticate the user
+            guard let user = try await db[User.self].findOne(matching: { user in
+                user.$username == username
+            }) else {
+                // User does not exist
+                return .failure
+            }
+
+            switch request.request {
+            case .hostBased. none:
+                // Not supported
+                return .failure
+            case .publicKey(let publicKey):
+                // Check if the public key is correct
+                guard publicKey.publicKey == user.publicKey else {
+                    return .failure
+                }
+
+                return .success
+            case .password(let request):
+                // Uses Vapor's Bcrypt library to verify the password
+                guard try Bcrypt.verify(request.password, created: user.password) else {
+                    return .failure
+                }
+                
+                return .success
+            }
+        }
+    }
+}
+```
+
+Then, create the server:
 
 ```swift
 let server = try await SSHServer.host(
@@ -156,6 +174,58 @@ The `setEnvironmentValue` function adds an environment variable, which you can p
 
 Whether you simulate a process, or hook up a real child-process, the requirements are the same. You **must** provide an exit code or throw an error out of the exeucing function. You can also `fail` on the outputHandler the process using an error. Finally, you'll have to return an `ExecCommandContext` that represents your process. This can receive remote `terminate` signals, or receive a notification that `stdin` was closed through `inputClosed`.
 
+```swift
+import Foundation
+
+/// A context that represents a process that is being executed.
+/// This can receive remote `terminate` signals, or receive a notification that `stdin` was closed through `inputClosed`.
+struct ExecProcessContext: ExecCommandContext {
+    let process: Process
+    
+    func terminate() async throws {
+        process.terminate()
+    }
+    
+    func inputClosed() async throws {
+        try process.stdin.close()
+    }
+}
+
+/// An example of a custom ExecDelegate that uses bash as the shell to execute commands
+public final class MyExecDelegate: ExecDelegate {
+    var environment: [String: String] = [:]
+
+    public func setEnvironmentValue(_ value: String, forKey key: String) async throws {
+        // Set the environment variable
+        environment[key] = value
+    }
+
+    public func start(command: String, outputHandler: ExecOutputHandler) async throws -> ExecCommandContext {
+        // Start the command
+        let process = Process()
+
+        // This uses bash as the shell to execute the command
+        // You can use any shell you want, or even a custom one
+        // This is just an example, you can do whatever you want
+        // as long as you provide an exit code
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-c", command]
+        process.environment = environment
+        process.standardInput = outputHandler.stdin
+        process.standardOutput = outputHandler.stdout
+        process.standardError = outputHandler.stderr
+        process.terminationHandler = { process in
+            // Send the exit code
+            outputHandler.exit(code: Int(process.terminationStatus))
+        }
+
+        // Start the process
+        try process.run()
+        return ExecProcessContext(process: process)
+    }
+}
+```
+
 ### SFTP Server
 
 When you implement SFTP in Citadel, you're responsible for taking care of logistics. Be it through a backing MongoDB store, a real filesystem, or your S3 bucket.
@@ -165,6 +235,7 @@ When you implement SFTP in Citadel, you're responsible for taking care of logist
 The most important helper most people need is OpenSSH key parsing. We support extensions on PrivateKey types such as our own `Insecure.RSA.PrivateKey`, as well as existing SwiftCrypto types like `Curve25519.Signing.PrivateKey`:
 
 ```swift
+// Parse an OpenSSH RSA private key. This is the same format as the one used by OpenSSH
 let sshFile = try String(contentsOf: ..)
 let privateKey = try Insecure.RSA.PrivateKey(sshRsa: sshFile)
 ```
@@ -174,7 +245,9 @@ let privateKey = try Insecure.RSA.PrivateKey(sshRsa: sshFile)
 If you can't connect to a server, it's likely that your server uses a deprecated set of algorithms that NIOSSH doesn't support. No worries though, as Citadel does implement these! Don't use these if you don't have to, as they're deprecated for good (security) reasons.
 
 ```swift
+// Create a new set of algorithms
 var algorithms = SSHAlgorithms()
+
 algorithms.transportProtectionSchemes = .add([
     AES128CTR.self
 ])
@@ -188,6 +261,7 @@ algorithms.keyExchangeAlgorithms = .add([
 You can then use these in an SSHClient, together with any other potential protocol configuration options:
 
 ```swift
+// Connect to the server using the new algorithms and a password-based authentication method
 let client = try await SSHClient.connect(
     sshHost: "example.com",
     authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
