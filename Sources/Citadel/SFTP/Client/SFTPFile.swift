@@ -111,7 +111,7 @@ public final class SFTPFile {
                         length: UInt32(consumed)
                     )
                     
-                    readableBytes -= data.readableBytes
+                    readableBytes -= UInt64(data.readableBytes)
                     buffer.writeBuffer(&data)
                 }
             } else {
