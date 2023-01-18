@@ -105,13 +105,13 @@ public final class SFTPFile {
             if var readableBytes = attributes.size {
                 while readableBytes > 0 {
                     let consumed = Swift.min(readableBytes, UInt64(UInt32.max))
-                    readableBytes -= consumed
                     
                     var data = try await self.read(
                         from: numericCast(buffer.writerIndex),
                         length: UInt32(consumed)
                     )
                     
+                    readableBytes -= data.readableBytes
                     buffer.writeBuffer(&data)
                 }
             } else {

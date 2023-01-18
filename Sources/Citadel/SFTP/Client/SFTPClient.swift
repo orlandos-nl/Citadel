@@ -262,11 +262,12 @@ extension SSHClient {
             let timeoutCheck = self.eventLoop.makePromise(of: Void.self)
             
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                SFTPClient.setupChannelHanders(channel: channel, logger: logger).map(createClient.succeed)
+                SFTPClient.setupChannelHanders(channel: channel, logger: logger)
+                    .map(createClient.succeed)
             }
             
             timeoutCheck.futureResult.whenFailure { _ in
-                logger.warning("SFTP ERROR: subsystem request or initialize message received no reply after 15 seconds")
+                logger.warning("SFTP subsystem request or initialize message received no reply after 15 seconds. Likely the result of opening too many SFTPClient handles.")
             }
             
             self.eventLoop.scheduleTask(in: .seconds(15)) {
@@ -307,6 +308,7 @@ extension SSHClient {
                         logger.warning("SFTP ERROR: Server version is unrecognized: \(serverVersion.version.rawValue)")
                         throw SFTPError.unsupportedVersion(serverVersion.version)
                     }
+                    
                     logger.info("SFTP connection opened and ready")
                     return client
                 }
