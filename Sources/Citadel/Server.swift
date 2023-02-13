@@ -102,9 +102,7 @@ final class CitadelServerDelegate {
                 eventLoop: channel.eventLoop
             ))
             
-            if let exec = self.exec {
-                handlers.append(ExecHandler(delegate: exec, username: username))
-            }
+            handlers.append(ExecHandler(delegate: exec, username: username))
             
             return channel.pipeline.addHandlers(handlers)
         case .directTCPIP, .forwardedTCPIP:
