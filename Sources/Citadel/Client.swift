@@ -69,6 +69,10 @@ public final class SSHClient {
     internal var connectionSettings = SSHConnectionSettings()
     private let algorithms: SSHAlgorithms
     private let protocolOptions: Set<SSHProtocolOption>
+    private var onDisconnect: (@Sendable () -> ())?
+    public var isConnected: Bool {
+        session.channel.isActive
+    }
 
     /// The event loop that this SSH connection is running on.
     public var eventLoop: EventLoop {
@@ -87,6 +91,12 @@ public final class SSHClient {
         self.hostKeyValidator = hostKeyValidator
         self.algorithms = algorithms
         self.protocolOptions = protocolOptions
+        
+        onNewSession(session)
+    }
+    
+    public func onDisconnect(perform onDisconnect: @escaping @Sendable () -> ()) {
+        self.onDisconnect = onDisconnect
     }
     
     /// Connects to an SSH server.
@@ -179,6 +189,8 @@ public final class SSHClient {
     
     private func onClose() {
         Task {
+            self.onDisconnect?()
+            
             switch connectionSettings.reconnect.mode {
             case .never:
                 return
@@ -211,6 +223,8 @@ public final class SSHClient {
             protocolOptions: protocolOptions,
             group: session.channel.eventLoop
         )
+        
+        onNewSession(session)
     }
     
     public func close() async throws {
