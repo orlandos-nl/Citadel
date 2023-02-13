@@ -23,9 +23,13 @@ final class SubsystemHandler: ChannelDuplexHandler {
     typealias OutboundOut = SSHChannelData
     
     let sftp: SFTPDelegate?
+    let eventLoop: EventLoop
+    var configured: EventLoopPromise<Void>
     
-    init(sftp: SFTPDelegate?) {
+    init(sftp: SFTPDelegate?, eventLoop: EventLoop) {
         self.sftp = sftp
+        self.eventLoop = eventLoop
+        self.configured = eventLoop.makePromise()
     }
     
     func handlerAdded(context: ChannelHandlerContext) {
@@ -43,18 +47,22 @@ final class SubsystemHandler: ChannelDuplexHandler {
         case let event as SSHChannelRequestEvent.SubsystemRequest:
             switch event.subsystem {
             case "sftp":
-                guard let sftp = sftp else {
+                guard let sftp = sftp, let parent = context.channel.parent else {
                     context.channel.close(promise: nil)
                     return
                 }
                 
-                SFTPServerSubsystem.setupChannelHanders(
-                    channel: context.channel,
-                    delegate: sftp,
-                    logger: .init(label: "nl.orlandos.citadel.sftp-server")
-                ).flatMap { () -> EventLoopFuture<Void> in
+                parent.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
+                    SFTPServerSubsystem.setupChannelHanders(
+                        channel: context.channel,
+                        delegate: sftp,
+                        logger: .init(label: "nl.orlandos.citadel.sftp-server"),
+                        username: handler.username
+                    )
+                }.flatMap { () -> EventLoopFuture<Void> in
                     let promise = context.eventLoop.makePromise(of: Void.self)
                     context.channel.triggerUserOutboundEvent(ChannelSuccessEvent(), promise: promise)
+                    self.configured.succeed(())
                     return promise.futureResult
                 }.whenFailure { _ in
                     context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil)
@@ -68,7 +76,9 @@ final class SubsystemHandler: ChannelDuplexHandler {
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        context.fireChannelRead(data)
+        configured.futureResult.whenSuccess {
+            context.fireChannelRead(data)
+        }
     }
     
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
@@ -87,7 +97,10 @@ final class CitadelServerDelegate {
         case .session:
             var handlers = [ChannelHandler]()
             
-            handlers.append(SubsystemHandler(sftp: self.sftp))
+            handlers.append(SubsystemHandler(
+                sftp: self.sftp,
+                eventLoop: channel.eventLoop
+            ))
             
             if let exec = self.exec {
                 handlers.append(ExecHandler(delegate: exec, username: username))

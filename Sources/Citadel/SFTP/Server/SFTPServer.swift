@@ -70,26 +70,25 @@ struct SFTPServerSubsystem {
     static func setupChannelHanders(
         channel: Channel,
         delegate: SFTPDelegate,
-        logger: Logger
+        logger: Logger,
+        username: String?
     ) -> EventLoopFuture<Void> {
-        channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
-            let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
-            let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
-            let sftpInboundHandler = SFTPServerInboundHandler(
-                logger: logger,
-                delegate: delegate,
-                eventLoop: channel.eventLoop,
-                username: handler.username
-            )
-            
-            return channel.pipeline.addHandlers(
-                SSHChannelDataUnwrapper(),
-                SSHOutboundChannelDataWrapper(),
-                deserializeHandler,
-                serializeHandler,
-                sftpInboundHandler,
-                CloseErrorHandler(logger: logger)
-            )
-        }
+        let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
+        let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
+        let sftpInboundHandler = SFTPServerInboundHandler(
+            logger: logger,
+            delegate: delegate,
+            eventLoop: channel.eventLoop,
+            username: username
+        )
+        
+        return channel.pipeline.addHandlers(
+            SSHChannelDataUnwrapper(),
+            SSHOutboundChannelDataWrapper(),
+            deserializeHandler,
+            serializeHandler,
+            sftpInboundHandler,
+            CloseErrorHandler(logger: logger)
+        )
     }
 }
