@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 import NIO
 import NIOSSH
 
@@ -85,6 +86,11 @@ public struct ExecCommandStream {
     }
 }
 
+public enum ExecCommandOutput {
+    case stdout(ByteBuffer)
+    case stderr(ByteBuffer)
+}
+
 final class ExecCommandHandler: ChannelDuplexHandler {
     enum Output {
         case stdout(ByteBuffer)
@@ -97,9 +103,11 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     typealias OutboundIn = ByteBuffer
     typealias OutboundOut = SSHChannelData
 
+    let logger: Logger
     let onOutput: (Output) -> ()
     
-    init(onOutput: @escaping (Output) -> ()) {
+    init(logger: Logger, onOutput: @escaping (Output) -> ()) {
+        self.logger = logger
         self.onOutput = onOutput
     }
     
@@ -126,7 +134,8 @@ final class ExecCommandHandler: ChannelDuplexHandler {
         let data = self.unwrapInboundIn(data)
 
         guard case .byteBuffer(let buffer) = data.data else {
-            return
+            logger.error("Unable to process channelData for executed command. Data was not a ByteBuffer")
+            return onOutput(.eof(SSHExecError.invalidData))
         }
         
         switch data.type {
@@ -172,7 +181,7 @@ extension SSHClient {
                     )
                     
                     return channel.pipeline.addHandlers(
-                        ExecCommandHandler(onOutput: collecting.onOutput)
+                        ExecCommandHandler(logger: self.logger, onOutput: collecting.onOutput)
                     )
                 }
                 
@@ -203,25 +212,23 @@ extension SSHClient {
         }.get()
     }
     
-    /// Executes a command on the remote server. This will return the output of the command. If the command fails, the error will be thrown. If the output is too large, the command will fail.
-    /// - Parameters:
-    ///  - command: The command to execute.
-    /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
-    public func executeCommandStream(_ command: String) async throws -> ExecCommandStream {
-        var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
-        var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
-        let stdout = AsyncThrowingStream<ByteBuffer, Error> { continuation in
-            stdoutContinuation = continuation
+    public func executeCommandStream(_ command: String) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
+        var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
+        let stream = AsyncThrowingStream<ExecCommandOutput, Error> { continuation in
+            streamContinuation = continuation
         }
         
-        let stderr = AsyncThrowingStream<ByteBuffer, Error> { continuation in
-            stderrContinuation = continuation
+        let handler = ExecCommandHandler(logger: logger) { output in
+            switch output {
+            case .stdout(let stdout):
+                streamContinuation.yield(.stdout(stdout))
+            case .stderr(let stderr):
+                streamContinuation.yield(.stderr(stderr))
+            case .eof(let error):
+                streamContinuation.finish(throwing: error)
+            }
         }
         
-        let continuation = ExecCommandStream.Continuation(stdout: stdoutContinuation, stderr: stderrContinuation)
-        let handler = ExecCommandHandler(onOutput: continuation.onOutput)
-        
-        let stream = ExecCommandStream(stdout: stdout, stderr: stderr)
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
         let channel: Channel
@@ -253,5 +260,44 @@ extension SSHClient {
         try await channel.triggerUserOutboundEvent(execRequest)
         
         return stream
+    }
+    
+    public func executeCommandPair(_ command: String) async throws -> ExecCommandStream {
+        var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
+        var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
+        let stdout = AsyncThrowingStream<ByteBuffer, Error> { continuation in
+            stdoutContinuation = continuation
+        }
+        
+        let stderr = AsyncThrowingStream<ByteBuffer, Error> { continuation in
+            stderrContinuation = continuation
+        }
+        
+        let handler = ExecCommandStream.Continuation(
+            stdout: stdoutContinuation,
+            stderr: stderrContinuation
+        )
+        
+        Task {
+            do {
+                let stream = try await self.executeCommandStream(command)
+                for try await chunk in stream {
+                    switch chunk {
+                    case .stdout(let buffer):
+                        handler.stdout.yield(buffer)
+                    case .stderr(let buffer):
+                        handler.stderr.yield(buffer)
+                    }
+                }
+                
+                handler.stdout.finish()
+                handler.stderr.finish()
+            } catch {
+                handler.stdout.finish(throwing: error)
+                handler.stderr.finish(throwing: error)
+            }
+        }
+        
+        return ExecCommandStream(stdout: stdout, stderr: stderr)
     }
 }
