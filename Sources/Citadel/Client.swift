@@ -1,4 +1,5 @@
 import NIO
+import Logging
 import NIOSSH
 
 public struct SSHAlgorithms {
@@ -70,10 +71,11 @@ public final class SSHClient {
     private let algorithms: SSHAlgorithms
     private let protocolOptions: Set<SSHProtocolOption>
     private var onDisconnect: (@Sendable () -> ())?
+    public let logger = Logger(label: "nl.orlandos.citadel.client")
     public var isConnected: Bool {
         session.channel.isActive
     }
-
+    
     /// The event loop that this SSH connection is running on.
     public var eventLoop: EventLoop {
         session.channel.eventLoop
