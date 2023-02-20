@@ -10,6 +10,7 @@ public struct TTYSTDError: Error {
 final class CollectingExecCommandHelper {
     let maxResponseSize: Int?
     var isIgnoringInput = false
+    let mergeStreams: Bool
     let stdoutPromise: EventLoopPromise<ByteBuffer>?
     let stderrPromise: EventLoopPromise<ByteBuffer>?
     var stdout: ByteBuffer
@@ -19,17 +20,21 @@ final class CollectingExecCommandHelper {
         maxResponseSize: Int?,
         stdoutPromise: EventLoopPromise<ByteBuffer>?,
         stderrPromise: EventLoopPromise<ByteBuffer>?,
+        mergeStreams: Bool,
         allocator: ByteBufferAllocator
     ) {
         self.maxResponseSize = maxResponseSize
         self.stdoutPromise = stdoutPromise
         self.stderrPromise = stderrPromise
+        self.mergeStreams = mergeStreams
         self.stdout = allocator.buffer(capacity: 4096)
         self.stderr = allocator.buffer(capacity: 4096)
     }
     
     public func onOutput(_ output: ExecCommandHandler.Output) {
         switch output {
+        case .stderr(let byteBuffer) where mergeStreams:
+            fallthrough
         case .stdout(let byteBuffer):
             if
                 let maxResponseSize = maxResponseSize,
@@ -164,7 +169,7 @@ extension SSHClient {
     /// - Parameters:
     ///  - command: The command to execute.
     /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
-    public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
+    public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false) async throws -> ByteBuffer {
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
         let channel: Channel
@@ -177,6 +182,7 @@ extension SSHClient {
                         maxResponseSize: maxResponseSize,
                         stdoutPromise: promise,
                         stderrPromise: nil,
+                        mergeStreams: mergeStreams,
                         allocator: channel.allocator
                     )
                     
