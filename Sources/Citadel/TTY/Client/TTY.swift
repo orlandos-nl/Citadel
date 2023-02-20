@@ -235,27 +235,18 @@ extension SSHClient {
             }
         }
         
-        let promise = eventLoop.makePromise(of: ByteBuffer.self)
-        
-        let channel: Channel
-        
-        do {
-            channel = try await eventLoop.flatSubmit {
-                let createChannel = self.eventLoop.makePromise(of: Channel.self)
-                self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                    channel.pipeline.addHandlers(handler)
-                }
-                
-                self.eventLoop.scheduleTask(in: .seconds(15)) {
-                    createChannel.fail(CitadelError.channelCreationFailed)
-                }
-                
-                return createChannel.futureResult
-            }.get()
-        } catch {
-            promise.fail(error)
-            throw error
-        }
+        let channel = try await eventLoop.flatSubmit {
+            let createChannel = self.eventLoop.makePromise(of: Channel.self)
+            self.session.sshHandler.createChannel(createChannel) { channel, _ in
+                channel.pipeline.addHandlers(handler)
+            }
+            
+            self.eventLoop.scheduleTask(in: .seconds(15)) {
+                createChannel.fail(CitadelError.channelCreationFailed)
+            }
+            
+            return createChannel.futureResult
+        }.get()
         
         // We need to exec a thing.
         let execRequest = SSHChannelRequestEvent.ExecRequest(
