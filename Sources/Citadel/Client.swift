@@ -75,7 +75,7 @@ public final class SSHClient {
     public var isConnected: Bool {
         session.channel.isActive
     }
-
+    
     /// The event loop that this SSH connection is running on.
     public var eventLoop: EventLoop {
         session.channel.eventLoop

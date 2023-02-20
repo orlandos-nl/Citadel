@@ -4,15 +4,24 @@ import Crypto
 
 /// Represents an authentication method.
 public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
-    private let username: String
-    private let offer: NIOSSHUserAuthenticationOffer.Offer
+    private enum Implementation {
+        case custom(NIOSSHClientUserAuthenticationDelegate)
+        case user(String, offer: NIOSSHUserAuthenticationOffer.Offer)
+    }
+    
+    private let implementation: Implementation
     
     internal init(
         username: String,
         offer: NIOSSHUserAuthenticationOffer.Offer
     ) {
-        self.username = username
-        self.offer = offer
+        self.implementation = .user(username, offer: offer)
+    }
+    
+    internal init(
+        custom: NIOSSHClientUserAuthenticationDelegate
+    ) {
+        self.implementation = .custom(custom)
     }
     
     /// Creates a password based authentication method.
@@ -63,30 +72,39 @@ public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
         return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(p521Key: privateKey))))
     }
     
+    public static func custom(_ auth: NIOSSHClientUserAuthenticationDelegate) -> SSHAuthenticationMethod {
+        return SSHAuthenticationMethod(custom: auth)
+    }
+    
     public func nextAuthenticationType(
         availableMethods: NIOSSHAvailableUserAuthenticationMethods,
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
-        switch offer {
-        case .password:
-            guard availableMethods.contains(.password) else {
-                nextChallengePromise.fail(SSHClientError.unsupportedPasswordAuthentication)
-                return
+        switch implementation {
+        case .user(let username, offer: let offer):
+            switch offer {
+            case .password:
+                guard availableMethods.contains(.password) else {
+                    nextChallengePromise.fail(SSHClientError.unsupportedPasswordAuthentication)
+                    return
+                }
+            case .hostBased:
+                guard availableMethods.contains(.hostBased) else {
+                    nextChallengePromise.fail(SSHClientError.unsupportedHostBasedAuthentication)
+                    return
+                }
+            case .privateKey:
+                guard availableMethods.contains(.publicKey) else {
+                    nextChallengePromise.fail(SSHClientError.unsupportedPrivateKeyAuthentication)
+                    return
+                }
+            case .none:
+                ()
             }
-        case .hostBased:
-            guard availableMethods.contains(.hostBased) else {
-                nextChallengePromise.fail(SSHClientError.unsupportedHostBasedAuthentication)
-                return
-            }
-        case .privateKey:
-            guard availableMethods.contains(.publicKey) else {
-                nextChallengePromise.fail(SSHClientError.unsupportedPrivateKeyAuthentication)
-                return
-            }
-        case .none:
-            ()
+            
+            nextChallengePromise.succeed(NIOSSHUserAuthenticationOffer(username: username, serviceName: "", offer: offer))
+        case .custom(let implementation):
+            implementation.nextAuthenticationType(availableMethods: availableMethods, nextChallengePromise: nextChallengePromise)
         }
-        
-        nextChallengePromise.succeed(NIOSSHUserAuthenticationOffer(username: username, serviceName: "", offer: offer))
     }
 }
