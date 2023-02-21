@@ -165,10 +165,11 @@ final class ExecCommandHandler: ChannelDuplexHandler {
 }
 
 extension SSHClient {
-    /// Executes a command on the remote server. This will return the output of the command. If the command fails, the error will be thrown. If the output is too large, the command will fail.
+    /// Executes a command on the remote server. This will return the output of the command (stdout). If the command fails, the error will be thrown. If the output is too large, the command will fail.
     /// - Parameters:
-    ///  - command: The command to execute.
+    /// - command: The command to execute.
     /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
+    /// - mergeStreams: If the answer should also include stderr.
     public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false) async throws -> ByteBuffer {
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
@@ -217,7 +218,10 @@ extension SSHClient {
             return promise.futureResult
         }.get()
     }
-    
+
+    /// Executes a command on the remote server. This will return the output stream of the command. If the command fails, the error will be thrown.
+    /// - Parameters:
+    /// - command: The command to execute.
     public func executeCommandStream(_ command: String) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
         var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
         let stream = AsyncThrowingStream<ExecCommandOutput, Error> { continuation in
@@ -258,7 +262,10 @@ extension SSHClient {
         
         return stream
     }
-    
+
+    /// Executes a command on the remote server. This will return the pair of streams stdout and stderr of the command. If the command fails, the error will be thrown.
+    /// - Parameters:
+    /// - command: The command to execute.
     public func executeCommandPair(_ command: String) async throws -> ExecCommandStream {
         var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
