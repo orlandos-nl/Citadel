@@ -44,7 +44,7 @@ You can execute a command through SSH using the following code:
 let stdout = try await client.executeCommand("ls -la ~")
 ```
 
-Additionally, a maximum responsive response size can be set, and stderr can be included:
+Additionally, a maximum responsive response size can be set, and `stderr` can be merged with `stdout` so that the answer contains the content of both streams:
 
 ```swift
 let stdoutAndStderr = try await client.executeCommand("ls -la ~", maxResponseSize: 42, mergeStreams: true)
