@@ -44,7 +44,47 @@ You can execute a command through SSH using the following code:
 let stdout = try await client.executeCommand("ls -la ~")
 ```
 
-The `executeCommand` function accumulated information into a contiguous `ByteBuffer`. This is useful for non-interactive commands such as `cat` and `ls`. Citadel currently does not expose APIs for streaming into a process' `stdin` or streaming the `stdout` elsewhere. If you want this, please create an issue.
+Additionally, a maximum responsive response size can be set, and `stderr` can be merged with `stdout` so that the answer contains the content of both streams:
+
+```swift
+let stdoutAndStderr = try await client.executeCommand("ls -la ~", maxResponseSize: 42, mergeStreams: true)
+```
+
+The `executeCommand` function accumulated information into a contiguous `ByteBuffer`. This is useful for non-interactive commands such as `cat` and `ls`.
+
+The `executeCommandPair` function or `executeCommandStream` function can be used to access `stdout` and `stderr` independently. Both functions also accumulate information into contiguous separate `ByteBuffers`.
+
+An example of how executeCommandPair can be used:
+
+```swift
+let streams = try await client.executeCommandPair("cat /foo/bar.log")
+
+for try await blob in answer.stdout {
+    // do something with blob
+}
+
+for try await blob in answer.stderr {
+    // do something with blob
+}
+```
+
+An example of how executeCommandStream can be used:
+
+```swift
+let streams = try await client.executeCommandStream("cat /foo/bar.log")
+var asyncStreams = streams.makeAsyncIterator()
+
+while let blob = try await asyncStreams.next() {
+    switch blob {
+        case .stdout(let stdout):
+            // do something with stdout
+        case .stderr(let stderr):
+            // do something with stderr
+    }
+}
+```
+
+Citadel currently does not expose APIs for streaming into a process' `stdin`. If you want this, please create an issue.
 
 ### SFTP Client
 
