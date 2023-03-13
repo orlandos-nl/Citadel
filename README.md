@@ -2,6 +2,10 @@
 
 Citadel is a high level API around [NIOSSH](https://github.com/apple/swift-nio-ssh). It aims to add what's out of scope for NIOSSH, lending code from my private tools.
 
+Citadel is in active development by our team or Swift experts. Get in touch with our [Discord Community](https://discord.gg/H6799jh).
+
+Do you need professional support? We're available at [hello@unbeatable.software](mailto:hello@unbeatable.software)
+
 ## Client Usage
 
 Citadel's `SSHClient` needs a connection to a SSH server first:
