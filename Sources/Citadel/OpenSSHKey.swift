@@ -259,7 +259,7 @@ enum OpenSSH {
                     throw KeyError.missingDecryptionKey
                 }
                 
-                guard SHA512.didInit else {
+                guard _SHA512.didInit else {
                     fatalError("Internal library error")
                 }
                 

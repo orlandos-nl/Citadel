@@ -20,43 +20,83 @@ enum CitadelError: Error {
 }
 
 public final class AES128CTR: NIOSSHTransportProtection {
-    public static let macName: String? = "hmac-sha1"
+    private enum Mac {
+        case sha1, sha256, sha512
+    }
+    
+    public static let macNames = [
+        "hmac-sha1",
+        "hmac-sha2-256",
+        "hmac-sha2-512"
+    ]
     public static let cipherBlockSize = 16
     public static let cipherName = "aes128-ctr"
+    public var macBytes: Int {
+        keySizes.macKeySize
+    }
     
-    public static let keySizes = ExpectedKeySizes(
-        ivSize: 16,
-        encryptionKeySize: 16, // 128 bits
-        macKeySize: 20 // HAMC-SHA-1
-    )
+    public static func keySizes(forMac mac: String?) throws -> ExpectedKeySizes {
+        let macKeySize: Int
+        
+        switch mac {
+        case "hmac-sha1":
+            macKeySize = Insecure.SHA1.byteCount
+        case "hmac-sha2-256":
+            macKeySize = SHA256.byteCount
+        case "hmac-sha2-512":
+            macKeySize = SHA512.byteCount
+        default:
+            throw CitadelError.invalidMac
+        }
+        
+        return ExpectedKeySizes(
+            ivSize: 16,
+            encryptionKeySize: 16, // 128 bits
+            macKeySize: macKeySize
+        )
+    }
     
-    public let macBytes = 20 // HAMC-SHA-1
     private var keys: NIOSSHSessionKeys
     private var decryptionContext: UnsafeMutablePointer<EVP_CIPHER_CTX>
     private var encryptionContext: UnsafeMutablePointer<EVP_CIPHER_CTX>
+    private let mac: Mac
+    private let keySizes: ExpectedKeySizes
     
-    public init(initialKeys: NIOSSHSessionKeys) throws {
+    public init(initialKeys: NIOSSHSessionKeys, mac: String?) throws {
+        let keySizes = try Self.keySizes(forMac: mac)
+        
         guard
-            initialKeys.outboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8,
-            initialKeys.inboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8
+            initialKeys.outboundEncryptionKey.bitCount == keySizes.encryptionKeySize * 8,
+            initialKeys.inboundEncryptionKey.bitCount == keySizes.encryptionKeySize * 8
         else {
             throw CitadelError.invalidKeySize
         }
+        
+        switch mac {
+        case "hmac-sha1":
+            self.mac = .sha1
+        case "hmac-sha2-256":
+            self.mac = .sha256
+        case "hmac-sha2-512":
+            self.mac = .sha512
+        default:
+            throw CitadelError.invalidMac
+        }
 
         self.keys = initialKeys
-        
+        self.keySizes = keySizes
         self.encryptionContext = CCryptoBoringSSL_EVP_CIPHER_CTX_new()
         self.decryptionContext = CCryptoBoringSSL_EVP_CIPHER_CTX_new()
         
         let outboundEncryptionKey = initialKeys.outboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
             let outboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
-            assert(outboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            assert(outboundEncryptionKey.count == keySizes.encryptionKeySize)
             return outboundEncryptionKey
         }
         
         let inboundEncryptionKey = initialKeys.inboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
             let inboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
-            assert(inboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            assert(inboundEncryptionKey.count == keySizes.encryptionKeySize)
             return inboundEncryptionKey
         }
         
@@ -83,8 +123,8 @@ public final class AES128CTR: NIOSSHTransportProtection {
     
     public func updateKeys(_ newKeys: NIOSSHSessionKeys) throws {
         guard
-            newKeys.outboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8,
-            newKeys.inboundEncryptionKey.bitCount == Self.keySizes.encryptionKeySize * 8
+            newKeys.outboundEncryptionKey.bitCount == keySizes.encryptionKeySize * 8,
+            newKeys.inboundEncryptionKey.bitCount == keySizes.encryptionKeySize * 8
         else {
             throw CitadelError.invalidKeySize
         }
@@ -93,13 +133,13 @@ public final class AES128CTR: NIOSSHTransportProtection {
         
         let outboundEncryptionKey = newKeys.outboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
             let outboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
-            assert(outboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            assert(outboundEncryptionKey.count == keySizes.encryptionKeySize)
             return outboundEncryptionKey
         }
         
         let inboundEncryptionKey = newKeys.inboundEncryptionKey.withUnsafeBytes { buffer -> [UInt8] in
             let inboundEncryptionKey = Array(buffer.bindMemory(to: UInt8.self))
-            assert(inboundEncryptionKey.count == Self.keySizes.encryptionKeySize)
+            assert(inboundEncryptionKey.count == keySizes.encryptionKeySize)
             return inboundEncryptionKey
         }
         
@@ -151,12 +191,23 @@ public final class AES128CTR: NIOSSHTransportProtection {
     }
     
     public func decryptAndVerifyRemainingPacket(_ source: inout ByteBuffer, sequenceNumber: UInt32) throws -> ByteBuffer {
+        switch mac {
+        case .sha1:
+            return try _decryptAndVerifyRemainingPacket(&source, hash: Insecure.SHA1.self, sequenceNumber: sequenceNumber)
+        case .sha256:
+            return try _decryptAndVerifyRemainingPacket(&source, hash: SHA256.self, sequenceNumber: sequenceNumber)
+        case .sha512:
+            return try _decryptAndVerifyRemainingPacket(&source, hash: SHA512.self, sequenceNumber: sequenceNumber)
+        }
+    }
+    
+    internal func _decryptAndVerifyRemainingPacket<H: HashFunction>(_ source: inout ByteBuffer, hash: H.Type, sequenceNumber: UInt32) throws -> ByteBuffer {
         // The first 4 bytes are the length. The last 16 are the tag. Everything else is ciphertext. We expect
         // that the ciphertext is a clean multiple of the block size, and to be non-zero.
         guard
             var plaintext = source.readBytes(length: 16),
-            let ciphertext = source.readBytes(length: source.readableBytes - macBytes),
-            let macHash = source.readBytes(length: macBytes),
+            let ciphertext = source.readBytes(length: source.readableBytes - keySizes.macKeySize),
+            let macHash = source.readBytes(length: keySizes.macKeySize),
             ciphertext.count % Self.cipherBlockSize == 0
         else {
             // The only way this fails is if the payload doesn't match this encryption scheme.
@@ -195,7 +246,7 @@ public final class AES128CTR: NIOSSHTransportProtection {
         }
         
         func test(sequenceNumber: UInt32) -> Bool {
-            var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.inboundMACKey)
+            var hmac = Crypto.HMAC<H>(key: keys.inboundMACKey)
             withUnsafeBytes(of: sequenceNumber.bigEndian) { buffer in
                 hmac.update(data: buffer)
             }
@@ -226,6 +277,22 @@ public final class AES128CTR: NIOSSHTransportProtection {
     public func encryptPacket(
         _ packet: NIOSSHEncryptablePayload,
         to outboundBuffer: inout ByteBuffer,
+        sequenceNumber: UInt32
+    ) throws {
+        switch mac {
+        case .sha1:
+            try _encryptPacket(packet, to: &outboundBuffer, hashFunction: Insecure.SHA1.self, sequenceNumber: sequenceNumber)
+        case .sha256:
+            try _encryptPacket(packet, to: &outboundBuffer, hashFunction: SHA256.self, sequenceNumber: sequenceNumber)
+        case .sha512:
+            try _encryptPacket(packet, to: &outboundBuffer, hashFunction: SHA512.self, sequenceNumber: sequenceNumber)
+        }
+    }
+    
+    internal func _encryptPacket<H: HashFunction>(
+        _ packet: NIOSSHEncryptablePayload,
+        to outboundBuffer: inout ByteBuffer,
+        hashFunction: H.Type,
         sequenceNumber: UInt32
     ) throws {
         // Keep track of where the length is going to be written.
@@ -280,7 +347,7 @@ public final class AES128CTR: NIOSSHTransportProtection {
         let plaintext = outboundBuffer.getBytes(at: packetLengthIndex, length: encryptedBufferSize)!
         assert(plaintext.count % Self.cipherBlockSize == 0)
         
-        var hmac = Crypto.HMAC<Crypto.Insecure.SHA1>(key: keys.outboundMACKey)
+        var hmac = Crypto.HMAC<H>(key: keys.outboundMACKey)
         withUnsafeBytes(of: sequenceNumber.bigEndian) { buffer in
             hmac.update(data: buffer)
         }
