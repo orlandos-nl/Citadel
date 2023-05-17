@@ -305,51 +305,43 @@ extension SSHClient {
         return ExecCommandStream(stdout: stdout, stderr: stderr)
     }
     
-    public func requestShell() async throws -> ByteBuffer {
-        let promise = eventLoop.makePromise(of: ByteBuffer.self)
-        
-        let channel: Channel
-        
-        do {
-            channel = try await eventLoop.flatSubmit {
-                let createChannel = self.eventLoop.makePromise(of: Channel.self)
-                self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                    let collecting = CollectingExecCommandHelper(
-                        maxResponseSize: .max,
-                        stdoutPromise: promise,
-                        stderrPromise: nil,
-                        mergeStreams: false,
-                        allocator: channel.allocator
-                    )
-                    
-                    return channel.pipeline.addHandlers(
-                        ExecCommandHandler(logger: self.logger, onOutput: collecting.onOutput)
-                    )
-                }
-                
-                self.eventLoop.scheduleTask(in: .seconds(15)) {
-                    createChannel.fail(CitadelError.channelCreationFailed)
-                }
-                
-                return createChannel.futureResult
-            }.get()
-        } catch {
-            promise.fail(error)
-            throw error
+    public func requestShell() async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
+        var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
+        let stream = AsyncThrowingStream<ExecCommandOutput, Error> { continuation in
+            streamContinuation = continuation
         }
+        
+        let handler = ExecCommandHandler(logger: logger) { output in
+            switch output {
+            case .stdout(let stdout):
+                streamContinuation.yield(.stdout(stdout))
+            case .stderr(let stderr):
+                streamContinuation.yield(.stderr(stderr))
+            case .eof(let error):
+                streamContinuation.finish(throwing: error)
+            }
+        }
+        
+        let channel = try await eventLoop.flatSubmit {
+            let createChannel = self.eventLoop.makePromise(of: Channel.self)
+            self.session.sshHandler.createChannel(createChannel) { channel, _ in
+                channel.pipeline.addHandlers(handler)
+            }
+            
+            self.eventLoop.scheduleTask(in: .seconds(15)) {
+                createChannel.fail(CitadelError.channelCreationFailed)
+            }
+            
+            return createChannel.futureResult
+        }.get()
         
         // We need to exec a thing.
         let execRequest = SSHChannelRequestEvent.ShellRequest(
             wantReply: true
         )
         
-        return try await eventLoop.flatSubmit {
-            channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
-                channel.close(promise: nil)
-                promise.fail(error)
-            }
-            
-            return promise.futureResult
-        }.get()
+        try await channel.triggerUserOutboundEvent(execRequest)
+        
+        return stream
     }
 }
