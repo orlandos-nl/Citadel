@@ -341,7 +341,7 @@ extension SSHClient {
         )
         
         try await channel.triggerUserOutboundEvent(execRequest)
-        
+        streamContinuation.finish()
         return stream
     }
 }
