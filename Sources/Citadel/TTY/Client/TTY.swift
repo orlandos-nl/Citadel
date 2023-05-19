@@ -252,6 +252,10 @@ extension SSHClient {
             return createChannel.futureResult
         }.get()
         
+        let shellRequest = SSHChannelRequestEvent.ShellRequest(wantReply: false)
+        
+        try await channel.triggerUserOutboundEvent(shellRequest)
+        
         // We need to exec a thing.
         let execRequest = SSHChannelRequestEvent.ExecRequest(
             command: command,
@@ -341,7 +345,6 @@ extension SSHClient {
         )
         
         try await channel.triggerUserOutboundEvent(execRequest)
-        streamContinuation.finish()
         return stream
     }
 }
