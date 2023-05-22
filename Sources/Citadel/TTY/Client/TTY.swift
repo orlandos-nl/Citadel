@@ -128,6 +128,9 @@ final class ShellCommandHandler: ChannelDuplexHandler {
             ()
         case is NIOSSH.ChannelSuccessEvent:
             onOutput(context.channel, .shellSuccess)
+        case is NIOSSH.ChannelFailureEvent:
+            onOutput(context.channel, .eof(CitadelError.shellRequestFailed))
+            context.close(promise: nil)
         default:
             context.fireUserInboundEventTriggered(event)
         }
@@ -369,18 +372,19 @@ extension SSHClient {
         return ExecCommandStream(stdout: stdout, stderr: stderr)
     }
     
-    public func requestShell(command: String) async throws -> AsyncThrowingStream<String, Error> {
-        var streamContinuation: AsyncThrowingStream<String, Error>.Continuation!
-        let stream = AsyncThrowingStream<String, Error> { continuation in
+    public func executeInShell(command: String) async throws -> AsyncThrowingStream<ByteBuffer, Error> {
+        var streamContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
+        let stream = AsyncThrowingStream<ByteBuffer, Error> { continuation in
             streamContinuation = continuation
         }
         let handler = ShellCommandHandler(logger: logger) { channel, output in
             switch output {
             case .shellSuccess:
-                let commandData = SSHChannelData(type: .channel, data: .byteBuffer(ByteBuffer(string: command+"\n")))
+                let commandData = SSHChannelData(type: .channel,
+                                                 data: .byteBuffer(ByteBuffer(string: command+";exit\n")))
                 channel.writeAndFlush(commandData, promise: nil)
             case let .output(buffer):
-                streamContinuation.yield(String(buffer: buffer))
+                streamContinuation.yield(buffer)
             case .eof(let error):
                 streamContinuation.finish(throwing: error)
             }
