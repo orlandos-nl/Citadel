@@ -283,6 +283,7 @@ extension SSHClient {
                 channel.close(promise: nil)
                 promise.fail(error)
             }
+            
             return promise.futureResult
         }.get()
     }
@@ -327,6 +328,7 @@ extension SSHClient {
         )
         
         try await channel.triggerUserOutboundEvent(execRequest)
+        
         return stream
     }
 
@@ -372,6 +374,9 @@ extension SSHClient {
         return ExecCommandStream(stdout: stdout, stderr: stderr)
     }
     
+    /// Requests a shell to be invoked and executes a command on the remote server.
+    /// - Parameters:
+    /// - command: The command to execute.
     public func executeInShell(command: String) async throws -> AsyncThrowingStream<ByteBuffer, Error> {
         var streamContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         let stream = AsyncThrowingStream<ByteBuffer, Error> { continuation in
@@ -403,7 +408,6 @@ extension SSHClient {
             return createChannel.futureResult
         }.get()
         
-        // We need to exec a thing.
         let shellRequest = SSHChannelRequestEvent.ShellRequest(
             wantReply: true
         )
