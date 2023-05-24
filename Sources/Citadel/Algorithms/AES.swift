@@ -17,7 +17,7 @@ enum CitadelError: Error {
     case unauthorized
     case commandOutputTooLarge
     case channelCreationFailed
-    case shellRequestFailed
+    case channelFailure
 }
 
 public final class AES128CTR: NIOSSHTransportProtection {

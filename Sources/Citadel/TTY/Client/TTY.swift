@@ -132,6 +132,8 @@ final class ExecCommandHandler: ChannelDuplexHandler {
         switch event {
         case is NIOSSH.ChannelSuccessEvent:
             onOutput(context.channel, .channelSuccess)
+        case is NIOSSH.ChannelFailureEvent:
+            onOutput(context.channel, .eof(CitadelError.channelFailure))
         case is SSHChannelRequestEvent.ExitStatus:
             ()
         default:
@@ -165,11 +167,6 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         onOutput(context.channel, .eof(error))
     }
-
-//    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-//        let data = self.unwrapOutboundIn(data)
-//        context.write(self.wrapOutboundOut(SSHChannelData(type: .channel, data: .byteBuffer(data))), promise: promise)
-//    }
 }
 
 extension SSHClient {
