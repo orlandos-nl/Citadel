@@ -66,10 +66,10 @@ public protocol SFTPDelegate {
     func readSymlink(atPath path: String, context: SSHContext) async throws -> [SFTPPathComponent]
 }
 
-struct SFTPServerSubsystem {
+enum SFTPServerSubsystem {
     static func setupChannelHanders(
         channel: Channel,
-        delegate: SFTPDelegate,
+        sftp: SFTPDelegate,
         logger: Logger,
         username: String?
     ) -> EventLoopFuture<Void> {
@@ -77,7 +77,7 @@ struct SFTPServerSubsystem {
         let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
         let sftpInboundHandler = SFTPServerInboundHandler(
             logger: logger,
-            delegate: delegate,
+            delegate: sftp,
             eventLoop: channel.eventLoop,
             username: username
         )
