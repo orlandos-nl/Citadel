@@ -51,7 +51,6 @@ final class SubsystemHandler: ChannelDuplexHandler {
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let event as SSHChannelRequestEvent.ExecRequest:
-            print(event)
             context.fireUserInboundEventTriggered(event)
         case is SSHChannelRequestEvent.ShellRequest:
             guard let shell = shell, let parent = context.channel.parent else {

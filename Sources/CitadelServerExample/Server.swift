@@ -39,6 +39,8 @@ struct LoginHandler: NIOSSHServerUserAuthenticationDelegate {
     }
 }
 
+// Simply prints out what the user it typing
+// Without this, the user wouldn't see their own input
 public struct EchoShell: ShellDelegate {
     public func startShell(
         reading stream: AsyncStream<ShellClientEvent>,
