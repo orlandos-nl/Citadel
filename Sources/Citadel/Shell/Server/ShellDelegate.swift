@@ -71,9 +71,7 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
     
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
-//        case let event as SSHChannelRequestEvent.
         default:
-            print(event)
             context.fireUserInboundEventTriggered(event)
         }
     }
