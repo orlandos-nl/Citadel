@@ -2,6 +2,10 @@ import Foundation
 import NIO
 import NIOSSH
 
+public struct TTYSTDError: Error {
+    public let message: ByteBuffer
+}
+
 final class TTYHandler: ChannelDuplexHandler {
     typealias InboundIn = SSHChannelData
     typealias InboundOut = ByteBuffer
