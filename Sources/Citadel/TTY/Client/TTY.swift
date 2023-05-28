@@ -267,21 +267,16 @@ extension SSHClient {
             return createChannel.futureResult
         }.get()
         
-        
-        let channelRequest: Any
         if inShell {
-            channelRequest = SSHChannelRequestEvent.ShellRequest(
+            try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
                 wantReply: true
-            )
-            
+            ))
         } else {
-            channelRequest = SSHChannelRequestEvent.ExecRequest(
+            try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(
                 command: command,
                 wantReply: true
-            )
+            ))
         }
-
-        try await channel.triggerUserOutboundEvent(channelRequest)
         
         return stream
     }
