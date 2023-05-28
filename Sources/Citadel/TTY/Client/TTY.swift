@@ -31,7 +31,7 @@ final class CollectingExecCommandHelper {
         self.stderr = allocator.buffer(capacity: 4096)
     }
     
-    public func onOutput(_ output: ExecCommandHandler.Output) {
+    public func onOutput(_ channel: Channel, _ output: ExecCommandHandler.Output) {
         switch output {
         case .stderr(let byteBuffer) where mergeStreams:
             fallthrough
@@ -65,6 +65,8 @@ final class CollectingExecCommandHelper {
         case .eof(.none):
             stdoutPromise?.succeed(stdout)
             stderrPromise?.succeed(stderr)
+        case .channelSuccess:
+            ()
         }
     }
 }
@@ -86,6 +88,8 @@ public struct ExecCommandStream {
             case .eof(let error):
                 stdout.finish(throwing: error)
                 stderr.finish(throwing: error)
+            case .channelSuccess:
+                ()
             }
         }
     }
@@ -96,8 +100,10 @@ public enum ExecCommandOutput {
     case stderr(ByteBuffer)
 }
 
+
 final class ExecCommandHandler: ChannelDuplexHandler {
     enum Output {
+        case channelSuccess
         case stdout(ByteBuffer)
         case stderr(ByteBuffer)
         case eof(Error?)
@@ -109,9 +115,9 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     typealias OutboundOut = SSHChannelData
 
     let logger: Logger
-    let onOutput: (Output) -> ()
+    let onOutput: (Channel, Output) -> ()
     
-    init(logger: Logger, onOutput: @escaping (Output) -> ()) {
+    init(logger: Logger, onOutput: @escaping (Channel, Output) -> ()) {
         self.logger = logger
         self.onOutput = onOutput
     }
@@ -124,6 +130,10 @@ final class ExecCommandHandler: ChannelDuplexHandler {
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
+        case is NIOSSH.ChannelSuccessEvent:
+            onOutput(context.channel, .channelSuccess)
+        case is NIOSSH.ChannelFailureEvent:
+            onOutput(context.channel, .eof(CitadelError.channelFailure))
         case is SSHChannelRequestEvent.ExitStatus:
             ()
         default:
@@ -132,7 +142,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     }
 
     func handlerRemoved(context: ChannelHandlerContext) {
-        onOutput(.eof(nil))
+        onOutput(context.channel, .eof(nil))
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -140,14 +150,14 @@ final class ExecCommandHandler: ChannelDuplexHandler {
 
         guard case .byteBuffer(let buffer) = data.data else {
             logger.error("Unable to process channelData for executed command. Data was not a ByteBuffer")
-            return onOutput(.eof(SSHExecError.invalidData))
+            return onOutput(context.channel, .eof(SSHExecError.invalidData))
         }
         
         switch data.type {
         case .channel:
-            onOutput(.stdout(buffer))
+            onOutput(context.channel, .stdout(buffer))
         case .stdErr:
-            onOutput(.stderr(buffer))
+            onOutput(context.channel, .stderr(buffer))
         default:
             // We don't know this std channel
             ()
@@ -155,12 +165,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     }
     
     func errorCaught(context: ChannelHandlerContext, error: Error) {
-        onOutput(.eof(error))
-    }
-
-    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        let data = self.unwrapOutboundIn(data)
-        context.write(self.wrapOutboundOut(SSHChannelData(type: .channel, data: .byteBuffer(data))), promise: promise)
+        onOutput(context.channel, .eof(error))
     }
 }
 
@@ -222,13 +227,16 @@ extension SSHClient {
     /// Executes a command on the remote server. This will return the output stream of the command. If the command fails, the error will be thrown.
     /// - Parameters:
     /// - command: The command to execute.
-    public func executeCommandStream(_ command: String) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
+    /// - inShell:  Whether to request the remote server to start a shell before executing the command.
+    public func executeCommandStream(_ command: String, inShell: Bool = false) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
         var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
         let stream = AsyncThrowingStream<ExecCommandOutput, Error> { continuation in
             streamContinuation = continuation
         }
         
-        let handler = ExecCommandHandler(logger: logger) { output in
+        var hasReceivedChannelSuccess = false
+        
+        let handler = ExecCommandHandler(logger: logger) { channel, output in
             switch output {
             case .stdout(let stdout):
                 streamContinuation.yield(.stdout(stdout))
@@ -236,6 +244,13 @@ extension SSHClient {
                 streamContinuation.yield(.stderr(stderr))
             case .eof(let error):
                 streamContinuation.finish(throwing: error)
+            case .channelSuccess:
+                if inShell, !hasReceivedChannelSuccess {
+                    let commandData = SSHChannelData(type: .channel,
+                                                     data: .byteBuffer(ByteBuffer(string: command + ";exit\n")))
+                    channel.writeAndFlush(commandData, promise: nil)
+                    hasReceivedChannelSuccess = true
+                }
             }
         }
         
@@ -252,13 +267,16 @@ extension SSHClient {
             return createChannel.futureResult
         }.get()
         
-        // We need to exec a thing.
-        let execRequest = SSHChannelRequestEvent.ExecRequest(
-            command: command,
-            wantReply: true
-        )
-        
-        try await channel.triggerUserOutboundEvent(execRequest)
+        if inShell {
+            try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
+                wantReply: true
+            ))
+        } else {
+            try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(
+                command: command,
+                wantReply: true
+            ))
+        }
         
         return stream
     }
@@ -266,7 +284,7 @@ extension SSHClient {
     /// Executes a command on the remote server. This will return the pair of streams stdout and stderr of the command. If the command fails, the error will be thrown.
     /// - Parameters:
     /// - command: The command to execute.
-    public func executeCommandPair(_ command: String) async throws -> ExecCommandStream {
+    public func executeCommandPair(_ command: String, inShell: Bool = false) async throws -> ExecCommandStream {
         var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         let stdout = AsyncThrowingStream<ByteBuffer, Error> { continuation in
@@ -284,7 +302,7 @@ extension SSHClient {
         
         Task {
             do {
-                let stream = try await self.executeCommandStream(command)
+                let stream = try await executeCommandStream(command, inShell: inShell)
                 for try await chunk in stream {
                     switch chunk {
                     case .stdout(let buffer):
