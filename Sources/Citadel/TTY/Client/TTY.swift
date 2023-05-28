@@ -7,70 +7,6 @@ public struct TTYSTDError: Error {
     public let message: ByteBuffer
 }
 
-final class CollectingExecCommandHelper {
-    let maxResponseSize: Int?
-    var isIgnoringInput = false
-    let mergeStreams: Bool
-    let stdoutPromise: EventLoopPromise<ByteBuffer>?
-    let stderrPromise: EventLoopPromise<ByteBuffer>?
-    var stdout: ByteBuffer
-    var stderr: ByteBuffer
-    
-    init(
-        maxResponseSize: Int?,
-        stdoutPromise: EventLoopPromise<ByteBuffer>?,
-        stderrPromise: EventLoopPromise<ByteBuffer>?,
-        mergeStreams: Bool,
-        allocator: ByteBufferAllocator
-    ) {
-        self.maxResponseSize = maxResponseSize
-        self.stdoutPromise = stdoutPromise
-        self.stderrPromise = stderrPromise
-        self.mergeStreams = mergeStreams
-        self.stdout = allocator.buffer(capacity: 4096)
-        self.stderr = allocator.buffer(capacity: 4096)
-    }
-    
-    public func onOutput(_ channel: Channel, _ output: ExecCommandHandler.Output) {
-        switch output {
-        case .stderr(let byteBuffer) where mergeStreams:
-            fallthrough
-        case .stdout(let byteBuffer):
-            if
-                let maxResponseSize = maxResponseSize,
-                stdout.readableBytes + byteBuffer.readableBytes > maxResponseSize
-            {
-                isIgnoringInput = true
-                stdoutPromise?.fail(CitadelError.commandOutputTooLarge)
-                stderrPromise?.fail(CitadelError.commandOutputTooLarge)
-                return
-            }
-            
-            stdout.writeImmutableBuffer(byteBuffer)
-        case .stderr(let byteBuffer):
-            if
-                let maxResponseSize = maxResponseSize,
-                stderr.readableBytes + byteBuffer.readableBytes > maxResponseSize
-            {
-                isIgnoringInput = true
-                stdoutPromise?.fail(CitadelError.commandOutputTooLarge)
-                stderrPromise?.fail(CitadelError.commandOutputTooLarge)
-                return
-            }
-            
-            stderr.writeImmutableBuffer(byteBuffer)
-        case .eof(.some(let error)):
-            stdoutPromise?.fail(error)
-            stderrPromise?.fail(error)
-        case .eof(.none):
-            stdoutPromise?.succeed(stdout)
-            stderrPromise?.succeed(stderr)
-        case .channelSuccess:
-            ()
-        }
-    }
-}
-
 public struct ExecCommandStream {
     public let stdout: AsyncThrowingStream<ByteBuffer, Error>
     public let stderr: AsyncThrowingStream<ByteBuffer, Error>
@@ -175,53 +111,31 @@ extension SSHClient {
     /// - command: The command to execute.
     /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
     /// - mergeStreams: If the answer should also include stderr.
-    public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false) async throws -> ByteBuffer {
-        let promise = eventLoop.makePromise(of: ByteBuffer.self)
-        
-        let channel: Channel
-        
-        do {
-            channel = try await eventLoop.flatSubmit {
-                let createChannel = self.eventLoop.makePromise(of: Channel.self)
-                self.session.sshHandler.createChannel(createChannel) { channel, _ in
-                    let collecting = CollectingExecCommandHelper(
-                        maxResponseSize: maxResponseSize,
-                        stdoutPromise: promise,
-                        stderrPromise: nil,
-                        mergeStreams: mergeStreams,
-                        allocator: channel.allocator
-                    )
-                    
-                    return channel.pipeline.addHandlers(
-                        ExecCommandHandler(logger: self.logger, onOutput: collecting.onOutput)
-                    )
+    /// - inShell:  Whether to request the remote server to start a shell before executing the command. 
+    public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false, inShell: Bool = false) async throws -> ByteBuffer {
+        var result = ByteBuffer()
+        let stream = try await executeCommandStream(command, inShell: inShell)
+
+        for try await chunk in stream {
+            switch chunk {
+            case .stderr(let chunk):
+                guard mergeStreams else {
+                    continue
                 }
-                
-                self.eventLoop.scheduleTask(in: .seconds(15)) {
-                    createChannel.fail(CitadelError.channelCreationFailed)
+
+                fallthrough
+            case .stdout(let chunk):
+                let newResponseSize = chunk.readableBytes + result.readableBytes
+
+                if newResponseSize > maxResponseSize {
+                    throw CitadelError.commandOutputTooLarge
                 }
-                
-                return createChannel.futureResult
-            }.get()
-        } catch {
-            promise.fail(error)
-            throw error
-        }
-        
-        // We need to exec a thing.
-        let execRequest = SSHChannelRequestEvent.ExecRequest(
-            command: command,
-            wantReply: true
-        )
-        
-        return try await eventLoop.flatSubmit {
-            channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
-                channel.close(promise: nil)
-                promise.fail(error)
+
+                result.writeImmutableBuffer(chunk)
             }
-            
-            return promise.futureResult
-        }.get()
+        }
+
+        return result
     }
 
     /// Executes a command on the remote server. This will return the output stream of the command. If the command fails, the error will be thrown.
@@ -235,7 +149,7 @@ extension SSHClient {
         }
         
         var hasReceivedChannelSuccess = false
-        
+
         let handler = ExecCommandHandler(logger: logger) { channel, output in
             switch output {
             case .stdout(let stdout):
@@ -253,20 +167,20 @@ extension SSHClient {
                 }
             }
         }
-        
+
         let channel = try await eventLoop.flatSubmit {
             let createChannel = self.eventLoop.makePromise(of: Channel.self)
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
                 channel.pipeline.addHandlers(handler)
             }
-            
+
             self.eventLoop.scheduleTask(in: .seconds(15)) {
                 createChannel.fail(CitadelError.channelCreationFailed)
             }
-            
+
             return createChannel.futureResult
         }.get()
-        
+
         if inShell {
             try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
                 wantReply: true
