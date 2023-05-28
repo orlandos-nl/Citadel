@@ -22,12 +22,14 @@ final class SubsystemHandler: ChannelDuplexHandler {
     typealias OutboundIn = SSHChannelData
     typealias OutboundOut = SSHChannelData
     
+    let shell: ShellDelegate?
     let sftp: SFTPDelegate?
     let eventLoop: EventLoop
     var configured: EventLoopPromise<Void>
     
-    init(sftp: SFTPDelegate?, eventLoop: EventLoop) {
+    init(sftp: SFTPDelegate?, shell: ShellDelegate?, eventLoop: EventLoop) {
         self.sftp = sftp
+        self.shell = shell
         self.eventLoop = eventLoop
         self.configured = eventLoop.makePromise()
     }
@@ -38,24 +40,56 @@ final class SubsystemHandler: ChannelDuplexHandler {
         }
     }
     
+    func handlerRemoved(context: ChannelHandlerContext) {
+        self.configured.succeed(())
+    }
+    
     func channelInactive(context: ChannelHandlerContext) {
         context.fireChannelInactive()
     }
     
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
+        case let event as SSHChannelRequestEvent.ExecRequest:
+            print(event)
+            context.fireUserInboundEventTriggered(event)
+        case is SSHChannelRequestEvent.ShellRequest:
+            guard let shell = shell, let parent = context.channel.parent else {
+                _ = context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).flatMap {
+                    self.configured.succeed(())
+                    return context.channel.close()
+                }
+                return
+            }
+            
+            parent.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
+                ShellServerSubsystem.setupChannelHanders(
+                    channel: context.channel,
+                    shell: shell,
+                    logger: .init(label: "nl.orlandos.citadel.sftp-server"),
+                    username: handler.username
+                )
+            }.flatMap { () -> EventLoopFuture<Void> in
+                let promise = context.eventLoop.makePromise(of: Void.self)
+                context.channel.triggerUserOutboundEvent(ChannelSuccessEvent(), promise: promise)
+                self.configured.succeed(())
+                return promise.futureResult
+            }.whenFailure { _ in
+                context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil)
+            }
         case let event as SSHChannelRequestEvent.SubsystemRequest:
             switch event.subsystem {
             case "sftp":
                 guard let sftp = sftp, let parent = context.channel.parent else {
                     context.channel.close(promise: nil)
+                    self.configured.succeed(())
                     return
                 }
                 
                 parent.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
                     SFTPServerSubsystem.setupChannelHanders(
                         channel: context.channel,
-                        delegate: sftp,
+                        sftp: sftp,
                         logger: .init(label: "nl.orlandos.citadel.sftp-server"),
                         username: handler.username
                     )
@@ -93,6 +127,7 @@ final class SubsystemHandler: ChannelDuplexHandler {
 final class CitadelServerDelegate {
     var sftp: SFTPDelegate?
     var exec: ExecDelegate?
+    var shell: ShellDelegate?
     
     fileprivate init() {}
     
@@ -103,6 +138,7 @@ final class CitadelServerDelegate {
             
             handlers.append(SubsystemHandler(
                 sftp: self.sftp,
+                shell: self.shell,
                 eventLoop: channel.eventLoop
             ))
             
@@ -147,6 +183,10 @@ public final class SSHServer {
     /// - Note: Exec is disabled by default.
     public func enableExec(withDelegate delegate: ExecDelegate) {
         self.delegate.exec = delegate
+    }
+    
+    public func enableShell(withDelegate delegate: ShellDelegate) {
+        self.delegate.shell = delegate
     }
     
     /// Closes the SSH Server, stopping new connections from coming in.
