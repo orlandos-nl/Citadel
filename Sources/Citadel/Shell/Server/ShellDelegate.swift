@@ -13,7 +13,7 @@ public enum ShellServerEvent {
 public protocol ShellDelegate {
     func startShell(
         reading stream: AsyncStream<ShellClientEvent>,
-        context: SSHContext
+        context: SSHShellContext
     ) async throws -> AsyncThrowingStream<ShellServerEvent, Error>
 }
 
@@ -46,12 +46,17 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
     
     func handlerAdded(context: ChannelHandlerContext) {
         let channel = context.channel
-        
+
+        let shellContext = SSHShellContext(
+            session: SSHContext(username: self.username),
+            channel: channel
+        )
+
         let done = context.eventLoop.makePromise(of: Void.self)
         done.completeWithTask {
             let output = try await self.delegate.startShell(
                 reading: self.stream,
-                context: SSHContext(username: self.username)
+                context: shellContext
             )
             
             for try await chunk in output {
@@ -60,8 +65,10 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
                     try await channel.writeAndFlush(data)
                 }
             }
+
+            try await shellContext.close(mode: .output)
         }
-        
+
         done.futureResult.whenFailure(context.fireErrorCaught)
     }
     
