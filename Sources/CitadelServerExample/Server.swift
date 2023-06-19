@@ -8,12 +8,14 @@ import NIOSSH
             host: "localhost",
             port: 2222,
             hostKeys: [
-                .init(p521Key: .init())
+                // .init(p521Key: .init())
+                .init() // inits a host key file
             ],
             authenticationDelegate: LoginHandler(username: "joannis", password: "test")
         )
         
-        server.enableShell(withDelegate: EchoShell())
+         server.enableShell(withDelegate: EchoShell())
+        // server.enableShell(withDelegate: TTYShell())
         
         try await server.closeFuture.get()
     }
@@ -41,13 +43,13 @@ struct LoginHandler: NIOSSHServerUserAuthenticationDelegate {
 
 // Simply prints out what the user it typing
 // Without this, the user wouldn't see their own input
-public struct EchoShell: ShellDelegate {
+public struct TTYShell: ShellDelegate {
     public func startShell(
         reading stream: AsyncStream<ShellClientEvent>,
-        context: SSHContext
+        context: SSHShellContext
     ) async throws -> AsyncThrowingStream<ShellServerEvent, Error> {
         AsyncThrowingStream { continuation in
-            let message = "Hello \(context.username ?? "stranger")"
+            let message = "Hello \(context.session.username ?? "stranger")"
             continuation.yield(.stdout(ByteBuffer(string: message)))
             
             Task {
@@ -67,6 +69,34 @@ public struct EchoShell: ShellDelegate {
                     }
                 }
                 
+                continuation.finish()
+            }
+        }
+    }
+}
+
+// Simple shell emulator that returns the user input and offers some basic commands like: help, history, clear, whoami, date and exit.
+public struct EchoShell: ShellDelegate {
+    public func startShell(reading stream: AsyncStream<ShellClientEvent>,
+                           context: SSHShellContext
+    ) async throws -> AsyncThrowingStream<ShellServerEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                // embedd the EchoShell
+                let shell = EchoShellMaster(continuation: continuation,
+                                            context: context)
+                shell.set_usr(context.session.username)
+
+                for await message in stream {
+                    if case .stdin(let input) = message {
+                        let bytes = input.getBytes(at: input.readerIndex, length: input.readableBytes)!
+                        try await shell.write_input(bytes)
+                    }
+
+                    if context.isClosed || Task.isCancelled {
+                        break
+                    }
+                }
                 continuation.finish()
             }
         }
