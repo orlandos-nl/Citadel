@@ -120,6 +120,12 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
         case .readlink(let readlink):
             out.writeInteger(SFTPMessage.Symlink.id.rawValue)
             out.writeSSHString(readlink.path)
+        case .rename(let rename):
+            out.writeInteger(SFTPMessage.Rename.id.rawValue)
+            out.writeInteger(rename.requestId)
+            out.writeSSHString(rename.oldPath)
+            out.writeSSHString(rename.newPath)
+            out.writeInteger(rename.flags)
         }
         
         let length = out.writerIndex - lengthIndex - 4
