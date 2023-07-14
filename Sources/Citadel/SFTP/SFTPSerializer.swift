@@ -104,21 +104,26 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeSSHString(&fstat.handle)
         case .remove(let remove):
             out.writeInteger(SFTPMessage.Remove.id.rawValue)
+            out.writeInteger(remove.requestId)
             out.writeSSHString(remove.filename)
         case .fsetstat(var fsetstat):
             out.writeInteger(SFTPMessage.FileSetStat.id.rawValue)
+            out.writeInteger(fsetstat.requestId)
             out.writeSSHString(&fsetstat.handle)
             out.writeSFTPFileAttributes(fsetstat.attributes)
         case .setstat(let setstat):
             out.writeInteger(SFTPMessage.SetStat.id.rawValue)
+            out.writeInteger(setstat.requestId)
             out.writeSSHString(setstat.path)
             out.writeSFTPFileAttributes(setstat.attributes)
         case .symlink(let symlink):
             out.writeInteger(SFTPMessage.Symlink.id.rawValue)
+            out.writeInteger(symlink.requestId)
             out.writeSSHString(symlink.linkPath)
             out.writeSSHString(symlink.targetPath)
         case .readlink(let readlink):
             out.writeInteger(SFTPMessage.Symlink.id.rawValue)
+            out.writeInteger(readlink.requestId)
             out.writeSSHString(readlink.path)
         case .rename(let rename):
             out.writeInteger(SFTPMessage.Rename.id.rawValue)
