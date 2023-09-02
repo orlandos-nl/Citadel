@@ -232,6 +232,53 @@ public final class SFTPClient {
         
         self.logger.debug("SFTP created directory \(path)")
     }
+
+    /// Remove a file at the specified path on the SFTP server
+    public func remove(
+        at filePath: String
+    ) async throws {
+        self.logger.info("SFTP requesting remove file at '\(filePath)'")
+
+        let _ = try await sendRequest(.remove(.init(
+            requestId: allocateRequestId(),
+            filename: filePath
+        )))
+
+        self.logger.debug("SFTP removed file at \(filePath)")
+    }
+
+    /// Remove a directory at the specified path on the SFTP server
+    public func rmdir(
+        at filePath: String
+    ) async throws {
+        self.logger.info("SFTP requesting remove directory at '\(filePath)'")
+
+        let _ = try await sendRequest(.rmdir(.init(
+            requestId: allocateRequestId(),
+            filePath: filePath
+        )))
+
+        self.logger.debug("SFTP removed directory at \(filePath)")
+    }
+
+    /// Rename a file
+    public func rename(
+        at oldPath: String,
+        to newPath: String,
+        flags: UInt32 = 0
+    ) async throws {
+        self.logger.info("SFTP requesting rename file at '\(oldPath)' to '\(newPath)'")
+
+        let _ = try await sendRequest(.rename(.init(
+            requestId: allocateRequestId(),
+            oldPath: oldPath,
+            newPath: newPath,
+            flags: flags
+        )))
+
+        self.logger.debug("SFTP renamed file at \(oldPath) to \(newPath)")
+    }
+
 }
 
 extension SSHClient {

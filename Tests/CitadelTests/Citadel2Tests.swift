@@ -134,7 +134,11 @@ final class Citadel2Tests: XCTestCase {
             func addSymlink(linkPath: String, targetPath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
                 throw DelegateError.unsupported
             }
-            
+
+            func rename(oldPath: String, newPath: String, flags: UInt32, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+                throw DelegateError.unsupported
+            }
+
             func readSymlink(atPath path: String, context: Citadel.SSHContext) async throws -> [Citadel.SFTPPathComponent] {
                 throw DelegateError.unsupported
             }

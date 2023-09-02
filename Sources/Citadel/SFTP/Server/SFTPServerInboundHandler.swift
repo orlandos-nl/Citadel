@@ -484,7 +484,31 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             )
         }.flatMapErrorThrowing { _ in }
     }
-    
+
+    func rename(command: SFTPMessage.Rename, context:ChannelHandlerContext) {
+        let promise = context.eventLoop.makePromise(of: SFTPStatusCode.self)
+        promise.completeWithTask {
+            try await self.delegate.rename(
+                oldPath: command.oldPath,
+                newPath: command.newPath,
+                flags: command.flags,
+                context: self.makeContext()
+            )
+        }
+        _ = promise.futureResult.flatMap { status -> EventLoopFuture<Void> in
+            context.channel.writeAndFlush(
+                SFTPMessage.status(
+                    SFTPMessage.Status(
+                        requestId: command.requestId,
+                        errorCode: status,
+                        message: "",
+                        languageTag: "EN"
+                    )
+                )
+            )
+        }.flatMapErrorThrowing { _ in }
+    }
+
     func readlink(command: SFTPMessage.Readlink, context:ChannelHandlerContext) {
         let promise = context.eventLoop.makePromise(of: [SFTPPathComponent].self)
         promise.completeWithTask {
@@ -554,6 +578,8 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             symlink(command: command, context: context)
         case .readlink(let command):
             readlink(command: command, context: context)
+        case .rename(let command):
+            rename(command: command, context: context)
         case .version, .handle, .status, .data, .attributes, .name:
             // Client cannot send these messages
             context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in

@@ -64,6 +64,9 @@ public protocol SFTPDelegate {
 
     /// Reads the target of the symbolic link at the given path. This is equivalent to the `readlink()` system call.
     func readSymlink(atPath path: String, context: SSHContext) async throws -> [SFTPPathComponent]
+
+    /// Renames a file
+    func rename(oldPath: String, newPath: String, flags: UInt32, context: SSHContext) async throws -> SFTPStatusCode
 }
 
 struct SFTPServerSubsystem {

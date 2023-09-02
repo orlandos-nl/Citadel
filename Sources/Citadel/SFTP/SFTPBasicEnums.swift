@@ -53,7 +53,8 @@ public enum SFTPMessageType: UInt8 {
     case rmdir = 15
     case realpath = 16
     case stat = 17
-    case readlink = 18
+    case rename = 18
+    case readlink = 19
     case symlink = 20
     
     case status = 101
@@ -84,6 +85,7 @@ public enum SFTPMessageType: UInt8 {
         case .rmdir: return "SSH_FXP_RMDIR"
         case .realpath: return "SSH_FXP_REALPATH"
         case .stat: return "SSH_FXP_STAT"
+        case .rename: return "SSH_FXP_RENAME"
         case .readlink: return "SSH_FXP_READLINK"
         case .symlink: return "SSH_FXP_SYMLINK"
 
