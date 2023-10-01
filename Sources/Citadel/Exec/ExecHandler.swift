@@ -35,7 +35,7 @@ enum SSHServerError: Error {
 
 final class ExecHandler: ChannelDuplexHandler {
     typealias InboundIn = SSHChannelData
-    typealias InboundOut = ByteBuffer
+    typealias InboundOut = SSHChannelData
     typealias OutboundIn = SSHChannelData
     typealias OutboundOut = SSHChannelData
     
@@ -92,18 +92,7 @@ final class ExecHandler: ChannelDuplexHandler {
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let data = self.unwrapInboundIn(data)
-        
-        guard case .byteBuffer(let bytes) = data.data else {
-            fatalError("Unexpected read type")
-        }
-        
-        guard case .channel = data.type else {
-            context.fireErrorCaught(SSHServerError.invalidDataType)
-            return
-        }
-        
-        context.fireChannelRead(self.wrapInboundOut(bytes))
+        context.fireChannelRead(data)
     }
     
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {

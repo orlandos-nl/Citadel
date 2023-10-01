@@ -84,6 +84,10 @@ final class SubsystemHandler: ChannelDuplexHandler {
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         context.write(data, promise: promise)
     }
+
+    deinit {
+        configured.fail(CitadelError.channelCreationFailed)
+    }
 }
 
 final class CitadelServerDelegate {
