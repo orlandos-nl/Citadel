@@ -69,10 +69,10 @@ public protocol SFTPDelegate {
     func rename(oldPath: String, newPath: String, flags: UInt32, context: SSHContext) async throws -> SFTPStatusCode
 }
 
-struct SFTPServerSubsystem {
+enum SFTPServerSubsystem {
     static func setupChannelHanders(
         channel: Channel,
-        delegate: SFTPDelegate,
+        sftp: SFTPDelegate,
         logger: Logger,
         username: String?
     ) -> EventLoopFuture<Void> {
@@ -80,7 +80,7 @@ struct SFTPServerSubsystem {
         let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
         let sftpInboundHandler = SFTPServerInboundHandler(
             logger: logger,
-            delegate: delegate,
+            delegate: sftp,
             eventLoop: channel.eventLoop,
             username: username
         )
