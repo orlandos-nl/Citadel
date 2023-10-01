@@ -205,6 +205,13 @@ server.enableExec(withDelegate: MyExecDelegate())
 server.enableSFTP(withDelegate: MySFTPDelegate())
 ```
 
+If you're running the SSHServer from `main.swift` or an `@main` annotated type, make sure that Swift doesn't exit or `deinit` the server.
+A simple solution that is applicable most of the time is to use the server's `closeFuture`.
+
+```swift
+try await server.closeFuture.get()
+```
+
 ### Exec Server
 
 When creating a command execution delegate, simply implement the `ExecDelegate` protocol and the following functions:
