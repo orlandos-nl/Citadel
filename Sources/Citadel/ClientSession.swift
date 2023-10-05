@@ -99,7 +99,8 @@ final class SSHClientSession {
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
-        group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
+        connectTimeout: TimeAmount = .seconds(30)
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
         var clientConfiguration = SSHClientConfiguration(
@@ -123,7 +124,7 @@ final class SSHClientSession {
                 handshakeHandler
             ])
         }
-        .connectTimeout(.seconds(30))
+        .connectTimeout(connectTimeout)
         .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
         .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
         

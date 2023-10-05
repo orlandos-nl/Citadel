@@ -151,7 +151,8 @@ public final class SSHClient {
         reconnect: SSHReconnectMode,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
-        group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1)
+        group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1),
+        connectTimeout:TimeAmount = .seconds(30)
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
             host: host,
@@ -160,7 +161,8 @@ public final class SSHClient {
             hostKeyValidator: hostKeyValidator,
             algorithms: algorithms,
             protocolOptions: protocolOptions,
-            group: group
+            group: group,
+            connectTimeout: connectTimeout
         )
         
         let client = SSHClient(
