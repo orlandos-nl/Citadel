@@ -71,7 +71,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
         case is NIOSSH.ChannelFailureEvent:
             onOutput(context.channel, .eof(CitadelError.channelFailure))
         case is SSHChannelRequestEvent.ExitStatus:
-            ()
+            onOutput(context.channel, .eof(nil))
         default:
             context.fireUserInboundEventTriggered(event)
         }
