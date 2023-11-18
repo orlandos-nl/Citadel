@@ -4,7 +4,7 @@ Citadel is a high level API around [NIOSSH](https://github.com/apple/swift-nio-s
 
 Citadel is in active development by our team or Swift experts. Get in touch with our [Discord Community](https://discord.gg/H6799jh).
 
-Do you need professional support? We're available at [hello@unbeatable.software](mailto:hello@unbeatable.software)
+Do you need professional support? We're available at [joannis@unbeatable.software](mailto:joannis@unbeatable.software)
 
 ## Client Usage
 
