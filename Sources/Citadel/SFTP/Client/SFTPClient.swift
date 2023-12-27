@@ -19,12 +19,15 @@ public final class SFTPClient {
     var nextRequestId: UInt32 {
         get {
             syncQueue.sync {
-                _nextRequestId
+                print("In grab. \(self._nextRequestId)")
+                return _nextRequestId
             }
         }
         set {
             syncQueue.async(flags: .barrier) {
+                print("In set. \(self._nextRequestId)")
                 self._nextRequestId = newValue
+                print("After set. \(self._nextRequestId)")
             }
         }
     }
