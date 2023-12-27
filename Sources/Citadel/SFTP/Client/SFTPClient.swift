@@ -16,21 +16,36 @@ public final class SFTPClient {
     
     private let syncQueue = DispatchQueue(label: "com.test.myQueue", attributes: .concurrent)
     private var _nextRequestId: UInt32 = 0
-    var nextRequestId: UInt32 {
-        get {
-            syncQueue.sync {
-                print("In grab. \(self._nextRequestId)")
-                return _nextRequestId
-            }
-        }
-        set {
-            syncQueue.async(flags: .barrier) {
-                print("In set. \(self._nextRequestId)")
-                self._nextRequestId = newValue
-                print("After set. \(self._nextRequestId)")
-            }
+    private func incrementAndGetNextRequestId() -> UInt32 {
+        syncQueue.sync {
+            self._nextRequestId &+= 1
+            return _nextRequestId
         }
     }
+//    var nextRequestId: UInt32 {
+//        get {
+//            syncQueue.async(flags: .barrier) {
+//                self.nextRequestId &+= 1
+//                return _nextRequestId
+//            }
+//        }
+////        get {
+////            syncQueue.sync {
+////                print("In grab. \(self._nextRequestId)")
+////                return _nextRequestId
+////            }
+////        }
+////        incrementAndGrab() -> UInt32 {
+////            self.nextRequestId &+= 1
+////        }
+////        set {
+////            syncQueue.async(flags: .barrier) {
+////                print("In set. \(self._nextRequestId)")
+////                self._nextRequestId = newValue
+////                print("After set. \(self._nextRequestId)")
+////            }
+////        }
+//    }
     
     /// In-flight request ID tracker.
     fileprivate let responses: SFTPResponses
@@ -83,10 +98,11 @@ public final class SFTPClient {
     /// Returns a unique request ID for use in an SFTP message. Does _not_ register the ID for
     /// a response; that is handled by `sendRequest(_:)`.
     internal func allocateRequestId() -> UInt32 {
-        defer {
-            self.nextRequestId &+= 1
-        }
-        return self.nextRequestId
+        return incrementAndGetNextRequestId()
+//        defer {
+//            self.nextRequestId &+= 1
+//        } syncQueue.sync {
+//        return self.nextRequestId
     }
     
     /// Sends an SFTP request. The request's ID is used to track the response.
