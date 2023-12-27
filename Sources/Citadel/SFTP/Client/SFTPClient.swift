@@ -14,13 +14,15 @@ public final class SFTPClient {
     /// Causes a race condition
 //    private var nextRequestId: UInt32 = 0
     
-    private let syncQueue = DispatchQueue(label: "com.test.myQueue", attributes: .concurrent)
+//    private let syncQueue = DispatchQueue(label: "com.test.myQueue", attributes: .concurrent)
     private var _nextRequestId: UInt32 = 0
+    
+    @MainActor
     private func incrementAndGetNextRequestId() -> UInt32 {
-        syncQueue.sync {
-            self._nextRequestId &+= 1
-            return _nextRequestId
-        }
+//        syncQueue.sync {
+        self._nextRequestId &+= 1
+        return _nextRequestId
+//        }
     }
 //    var nextRequestId: UInt32 {
 //        get {
@@ -97,7 +99,7 @@ public final class SFTPClient {
     
     /// Returns a unique request ID for use in an SFTP message. Does _not_ register the ID for
     /// a response; that is handled by `sendRequest(_:)`.
-    internal func allocateRequestId() -> UInt32 {
+    @MainActor internal func allocateRequestId() -> UInt32 {
         return incrementAndGetNextRequestId()
 //        defer {
 //            self.nextRequestId &+= 1
