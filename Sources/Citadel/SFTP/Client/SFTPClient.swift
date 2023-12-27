@@ -11,7 +11,23 @@ public final class SFTPClient {
     fileprivate let channel: Channel
     
     /// A monotonically increasing counter for gneerating request IDs.
-    private var nextRequestId: UInt32 = 0
+    /// Causes a race condition
+//    private var nextRequestId: UInt32 = 0
+    
+    private let syncQueue = DispatchQueue(label: "com.test.myQueue", attributes: .concurrent)
+    private var _nextRequestId: UInt32 = 0
+    var nextRequestId: UInt32 {
+        get {
+            syncQueue.sync {
+                _nextRequestId
+            }
+        }
+        set {
+            syncQueue.async(flags: .barrier) {
+                self._nextRequestId = newValue
+            }
+        }
+    }
     
     /// In-flight request ID tracker.
     fileprivate let responses: SFTPResponses
