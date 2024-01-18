@@ -11,43 +11,13 @@ public final class SFTPClient {
     fileprivate let channel: Channel
     
     /// A monotonically increasing counter for gneerating request IDs.
-    /// Causes a race condition
-//    private var nextRequestId: UInt32 = 0
-    
-//    private let syncQueue = DispatchQueue(label: "com.test.myQueue", attributes: .concurrent)
     private var _nextRequestId: UInt32 = 0
     
     @MainActor
     private func incrementAndGetNextRequestId() -> UInt32 {
-//        syncQueue.sync {
         self._nextRequestId &+= 1
         return _nextRequestId
-//        }
     }
-//    var nextRequestId: UInt32 {
-//        get {
-//            syncQueue.async(flags: .barrier) {
-//                self.nextRequestId &+= 1
-//                return _nextRequestId
-//            }
-//        }
-////        get {
-////            syncQueue.sync {
-////                print("In grab. \(self._nextRequestId)")
-////                return _nextRequestId
-////            }
-////        }
-////        incrementAndGrab() -> UInt32 {
-////            self.nextRequestId &+= 1
-////        }
-////        set {
-////            syncQueue.async(flags: .barrier) {
-////                print("In set. \(self._nextRequestId)")
-////                self._nextRequestId = newValue
-////                print("After set. \(self._nextRequestId)")
-////            }
-////        }
-//    }
     
     /// In-flight request ID tracker.
     fileprivate let responses: SFTPResponses
@@ -101,10 +71,6 @@ public final class SFTPClient {
     /// a response; that is handled by `sendRequest(_:)`.
     @MainActor internal func allocateRequestId() -> UInt32 {
         return incrementAndGetNextRequestId()
-//        defer {
-//            self.nextRequestId &+= 1
-//        } syncQueue.sync {
-//        return self.nextRequestId
     }
     
     /// Sends an SFTP request. The request's ID is used to track the response.
