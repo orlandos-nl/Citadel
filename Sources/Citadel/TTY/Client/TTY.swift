@@ -112,9 +112,9 @@ extension SSHClient {
     /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
     /// - mergeStreams: If the answer should also include stderr.
     /// - inShell:  Whether to request the remote server to start a shell before executing the command. 
-    public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false, inShell: Bool = false, environment: [String: String] = [:]) async throws -> ByteBuffer {
+    public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false, inShell: Bool = false) async throws -> ByteBuffer {
         var result = ByteBuffer()
-        let stream = try await executeCommandStream(command, inShell: inShell, environment: environment)
+        let stream = try await executeCommandStream(command, inShell: inShell)
 
         for try await chunk in stream {
             switch chunk {
@@ -142,7 +142,7 @@ extension SSHClient {
     /// - Parameters:
     /// - command: The command to execute.
     /// - inShell:  Whether to request the remote server to start a shell before executing the command.
-    public func executeCommandStream(_ command: String, inShell: Bool = false, environment: [String: String] = [:]) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
+    public func executeCommandStream(_ command: String, inShell: Bool = false) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
         var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
         let stream = AsyncThrowingStream<ExecCommandOutput, Error> { continuation in
             streamContinuation = continuation
@@ -181,12 +181,6 @@ extension SSHClient {
             return createChannel.futureResult
         }.get()
 
-        for (key, value) in environment {
-            try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.EnvironmentRequest(
-                wantReply: true, name: key, value: value)
-            )
-        }
-
         if inShell {
             try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
                 wantReply: true
@@ -204,7 +198,7 @@ extension SSHClient {
     /// Executes a command on the remote server. This will return the pair of streams stdout and stderr of the command. If the command fails, the error will be thrown.
     /// - Parameters:
     /// - command: The command to execute.
-    public func executeCommandPair(_ command: String, inShell: Bool = false, environment: [String: String] = [:]) async throws -> ExecCommandStream {
+    public func executeCommandPair(_ command: String, inShell: Bool = false) async throws -> ExecCommandStream {
         var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         let stdout = AsyncThrowingStream<ByteBuffer, Error> { continuation in
@@ -222,7 +216,7 @@ extension SSHClient {
         
         Task {
             do {
-                let stream = try await executeCommandStream(command, inShell: inShell, environment: environment)
+                let stream = try await executeCommandStream(command, inShell: inShell)
                 for try await chunk in stream {
                     switch chunk {
                     case .stdout(let buffer):
