@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import NIOConcurrencyHelpers
 import NIOSSH
 import Logging
 
@@ -11,12 +12,13 @@ public final class SFTPClient {
     fileprivate let channel: Channel
     
     /// A monotonically increasing counter for gneerating request IDs.
-    private var _nextRequestId: UInt32 = 0
-    
-    @MainActor
+    private var _nextRequestId = NIOLockedValueBox<UInt32>(0)
+
     private func incrementAndGetNextRequestId() -> UInt32 {
-        self._nextRequestId &+= 1
-        return _nextRequestId
+        _nextRequestId.withLockedValue { value in
+            value &+= 1
+            return value
+        }
     }
     
     /// In-flight request ID tracker.
@@ -69,7 +71,7 @@ public final class SFTPClient {
     
     /// Returns a unique request ID for use in an SFTP message. Does _not_ register the ID for
     /// a response; that is handled by `sendRequest(_:)`.
-    @MainActor internal func allocateRequestId() -> UInt32 {
+    internal func allocateRequestId() -> UInt32 {
         return incrementAndGetNextRequestId()
     }
     
