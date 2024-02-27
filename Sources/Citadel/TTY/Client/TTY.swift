@@ -43,6 +43,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
         case stdout(ByteBuffer)
         case stderr(ByteBuffer)
         case eof(Error?)
+        case exit(Int)
     }
     
     typealias InboundIn = SSHChannelData
@@ -70,8 +71,8 @@ final class ExecCommandHandler: ChannelDuplexHandler {
             onOutput(context.channel, .channelSuccess)
         case is NIOSSH.ChannelFailureEvent:
             onOutput(context.channel, .eof(CitadelError.channelFailure))
-        case is SSHChannelRequestEvent.ExitStatus:
-            ()
+        case let status as SSHChannelRequestEvent.ExitStatus:
+            onOutput(context.channel, .exit(status.exitStatus))
         default:
             context.fireUserInboundEventTriggered(event)
         }
@@ -106,6 +107,10 @@ final class ExecCommandHandler: ChannelDuplexHandler {
 }
 
 extension SSHClient {
+    public struct CommandFailed: Error {
+        public let exitCode: Int
+    }
+
     /// Executes a command on the remote server. This will return the output of the command (stdout). If the command fails, the error will be thrown. If the output is too large, the command will fail.
     /// - Parameters:
     /// - command: The command to execute.
@@ -164,6 +169,12 @@ extension SSHClient {
                                                      data: .byteBuffer(ByteBuffer(string: command + ";exit\n")))
                     channel.writeAndFlush(commandData, promise: nil)
                     hasReceivedChannelSuccess = true
+                }
+            case .exit(let status):
+                if status == 0 {
+                    streamContinuation.finish()
+                } else {
+                    streamContinuation.finish(throwing: CommandFailed(exitCode: status))
                 }
             }
         }
