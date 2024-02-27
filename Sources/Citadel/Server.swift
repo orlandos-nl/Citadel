@@ -93,6 +93,7 @@ final class SubsystemHandler: ChannelDuplexHandler {
 final class CitadelServerDelegate {
     var sftp: SFTPDelegate?
     var exec: ExecDelegate?
+    var directTCPIP: DirectTCPIPDelegate?
     
     fileprivate init() {}
     
@@ -109,7 +110,19 @@ final class CitadelServerDelegate {
             handlers.append(ExecHandler(delegate: exec, username: username))
             
             return channel.pipeline.addHandlers(handlers)
-        case .directTCPIP, .forwardedTCPIP:
+        case .directTCPIP(let request):
+            guard let delegate = directTCPIP else {
+                return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
+            }
+
+            return channel.pipeline.addHandler(DataToBufferCodec()).flatMap {
+                return delegate.initializeDirectTCPIPChannel(
+                    channel,
+                    request: request,
+                    context: SSHContext(username: username)
+                )
+            }
+        case .forwardedTCPIP:
             return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
         }
     }
@@ -147,6 +160,10 @@ public final class SSHServer {
     /// - Note: Exec is disabled by default.
     public func enableExec(withDelegate delegate: ExecDelegate) {
         self.delegate.exec = delegate
+    }
+
+    public func enableDirectTCPIP(withDelegate delegate: DirectTCPIPDelegate) {
+        self.delegate.directTCPIP = delegate
     }
     
     /// Closes the SSH Server, stopping new connections from coming in.

@@ -1,22 +1,25 @@
 import NIO
 import NIOSSH
+import Logging
 
 final class ClientHandshakeHandler: ChannelInboundHandler {
     typealias InboundIn = Any
 
     private let promise: EventLoopPromise<Void>
+    let logger = Logger(label: "nl.orlandos.citadel.handshake")
 
     /// A future that will be fulfilled when the handshake is complete.
     public var authenticated: EventLoopFuture<Void> {
         promise.futureResult
     }
 
-    init(eventLoop: EventLoop) {
+    init(eventLoop: EventLoop, loginTimeout: TimeAmount) {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
         
         struct AuthenticationFailed: Error {}
-        eventLoop.scheduleTask(in: .seconds(10)) {
+        eventLoop.scheduleTask(in: loginTimeout) {
+            self.logger.debug("SSH login failed after timeout")
             promise.fail(AuthenticationFailed())
         }
     }
@@ -55,7 +58,10 @@ final class SSHClientSession {
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClientSession {
-        let handshakeHandler = ClientHandshakeHandler(eventLoop: channel.eventLoop)
+        let handshakeHandler = ClientHandshakeHandler(
+            eventLoop: channel.eventLoop,
+            loginTimeout: .seconds(10)
+        )
         var clientConfiguration = SSHClientConfiguration(
             userAuthDelegate: authenticationMethod,
             serverAuthDelegate: hostKeyValidator
@@ -102,7 +108,10 @@ final class SSHClientSession {
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
         connectTimeout: TimeAmount = .seconds(30)
     ) async throws -> SSHClientSession {
-        let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
+        let handshakeHandler = ClientHandshakeHandler(
+            eventLoop: group.next(),
+            loginTimeout: .seconds(10)
+        )
         var clientConfiguration = SSHClientConfiguration(
             userAuthDelegate: authenticationMethod,
             serverAuthDelegate: hostKeyValidator
