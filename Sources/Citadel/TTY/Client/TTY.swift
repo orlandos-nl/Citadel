@@ -26,6 +26,12 @@ public struct ExecCommandStream {
                 stderr.finish(throwing: error)
             case .channelSuccess:
                 ()
+            case .exit(0):
+                stdout.finish()
+                stderr.finish()
+            case .exit(let status):
+                stdout.finish(throwing: SSHClient.CommandFailed(exitCode: status))
+                stderr.finish(throwing: SSHClient.CommandFailed(exitCode: status))
             }
         }
     }
