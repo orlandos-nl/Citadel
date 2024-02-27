@@ -5,12 +5,39 @@ import Crypto
 import NIO
 import NIOSSH
 
-struct InvalidKey: Error {}
+public struct InvalidOpenSSHKey: Error {
+    public enum UnsupportedFeature: String {
+        case multipleKeys, unsupportedPublicKeyType, unsupportedKDF, unsupportedCipher
+    }
+
+    let reason: String
+
+    static let invalidUTF8String = InvalidOpenSSHKey(reason: "invalidUTF8String")
+    static let missingPublicKeyBuffer = InvalidOpenSSHKey(reason: "missingPublicKeyBuffer")
+    static let missingPrivateKeyBuffer = InvalidOpenSSHKey(reason: "missingPrivateKeyBuffer")
+    static let missingPublicKeyInPrivateKey = InvalidOpenSSHKey(reason: "missingPublicKeyInPrivateKey")
+    static let missingComment = InvalidOpenSSHKey(reason: "missingComment")
+    static let invalidCheck = InvalidOpenSSHKey(reason: "invalidCheck")
+    static let invalidPublicKeyInPrivateKey = InvalidOpenSSHKey(reason: "invalidPublicKeyInPrivateKey")
+    static let invalidLayout = InvalidOpenSSHKey(reason: "invalidLayout")
+    static let invalidPadding = InvalidOpenSSHKey(reason: "invalidPadding")
+    static let invalidOpenSSHBoundary = InvalidOpenSSHKey(reason: "invalidOpenSSHBoundary")
+    static let invalidBase64Payload = InvalidOpenSSHKey(reason: "invalidBase64Payload")
+    static let invalidOpenSSHPrefix = InvalidOpenSSHKey(reason: "invalidOpenSSHPrefix")
+    static func unsupportedFeature(_ feature: UnsupportedFeature) -> InvalidOpenSSHKey {
+        InvalidOpenSSHKey(reason: "UnsupportedFeature: \(feature.rawValue)")
+    }
+    static let invalidPublicKeyPrefix = InvalidOpenSSHKey(reason: "invalidPublicKeyPrefix")
+    static let invalidOrUnsupportedBCryptConfig = InvalidOpenSSHKey(reason: "invalidOrUnsupportedBCryptConfig")
+    static let unexpectedKDFNoneOptions = InvalidOpenSSHKey(reason: "unexpectedKDFNoneOptions")
+}
+
+public typealias InvalidKey = InvalidOpenSSHKey
 
 extension Curve25519.Signing.PublicKey: ByteBufferConvertible {
     static func read(consuming buffer: inout ByteBuffer) throws -> Curve25519.Signing.PublicKey {
         guard var publicKeyBuffer = buffer.readSSHBuffer() else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingPublicKeyBuffer
         }
         
         return try self.init(rawRepresentation: publicKeyBuffer.readBytes(length: publicKeyBuffer.readableBytes)!)
@@ -36,7 +63,7 @@ extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshEd25519: string, decryptionKey: decryptionKey)
         } else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidUTF8String
         }
     }
     
@@ -70,7 +97,7 @@ extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
         if let string = String(data: data, encoding: .utf8) {
             try self.init(sshRsa: string, decryptionKey: decryptionKey)
         } else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidUTF8String
         }
     }
     
