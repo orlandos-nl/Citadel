@@ -60,8 +60,8 @@
         "repositoryURL": "https://github.com/Joannis/swift-nio-ssh.git",
         "state": {
           "branch": null,
-          "revision": "d5fc603de485eca5a1e657361e3a8452875d108b",
-          "version": "0.3.0"
+          "revision": "01e03b888734b03f1005b0ca329d7b5af50208e7",
+          "version": "0.3.2"
         }
       }
     ]

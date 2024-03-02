@@ -1,6 +1,7 @@
 import NIO
 import NIOSSH
 
+struct AuthenticationFailed: Error, Equatable {}
 final class ClientHandshakeHandler: ChannelInboundHandler {
     typealias InboundIn = Any
 
@@ -14,8 +15,7 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     init(eventLoop: EventLoop) {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
-        
-        struct AuthenticationFailed: Error {}
+
         eventLoop.scheduleTask(in: .seconds(10)) {
             promise.fail(AuthenticationFailed())
         }
@@ -138,7 +138,7 @@ final class SSHClientSession {
     }
 }
 
-public struct InvalidHostKey: Error {}
+public struct InvalidHostKey: Error, Equatable {}
 
 /// A host key validator that can be used to validate an SSH host key. This can be used to validate the host key against a set of trusted keys, or to accept any key.
 public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
