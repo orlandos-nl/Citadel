@@ -38,7 +38,7 @@ extension Insecure.RSA.PrivateKey: ByteBufferConvertible {
             let qLength = buffer.readInteger(as: UInt32.self),
             let _ = buffer.readData(length: Int(qLength))
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidLayout
         }
         
         let privateExponent = CCryptoBoringSSL_BN_bin2bn(dBytes, dBytes.count, nil)!
@@ -56,22 +56,22 @@ extension Insecure.RSA.PrivateKey: ByteBufferConvertible {
 extension Curve25519.Signing.PrivateKey: ByteBufferConvertible {
     static func read(consuming buffer: inout ByteBuffer) throws -> Self {
         guard let publicKey = buffer.readSSHBuffer() else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingPublicKeyBuffer
         }
         
         guard var privateKey = buffer.readSSHBuffer() else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingPrivateKeyBuffer
         }
         
         guard
             let privateKeyBytes = privateKey.readBytes(length: 32),
             let publicKeyBytes = privateKey.readSlice(length: privateKey.readableBytes)
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingPublicKeyInPrivateKey
         }
         
         guard publicKeyBytes == publicKey else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidPublicKeyInPrivateKey
         }
         
         return try Self.init(rawRepresentation: privateKeyBytes)
@@ -145,7 +145,7 @@ extension ByteBuffer {
         iv: [UInt8]
     ) throws {
         guard self.readableBytes % 16 == 0 else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidPadding
         }
         
         let context = CCryptoBoringSSL_EVP_CIPHER_CTX_new()
@@ -174,7 +174,7 @@ extension ByteBuffer {
                         throw CitadelError.cryptographicError
                     }
                     
-                    byteBufferPointer.assign(from: decryptedBuffer.baseAddress!, count: 16)
+                    byteBufferPointer.update(from: decryptedBuffer.baseAddress!, count: 16)
                     // Move the pointer forward to the next block
                     byteBufferPointer += 16
                 }
@@ -311,14 +311,14 @@ extension OpenSSH.PrivateKey {
             key.hasPrefix("-----BEGIN OPENSSH PRIVATE KEY-----"),
             key.hasSuffix("-----END OPENSSH PRIVATE KEY-----")
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidOpenSSHBoundary
         }
         
         key.removeLast("-----END OPENSSH PRIVATE KEY-----".utf8.count)
         key.removeFirst("-----BEGIN OPENSSH PRIVATE KEY-----".utf8.count)
         
         guard let data = Data(base64Encoded: key) else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidBase64Payload
         }
         
         var buffer = ByteBuffer(data: data)
@@ -327,7 +327,7 @@ extension OpenSSH.PrivateKey {
             buffer.readString(length: "openssh-key-v1".utf8.count) == "openssh-key-v1",
             buffer.readInteger(as: UInt8.self) == 0x00
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidOpenSSHPrefix
         }
             
         let cipher = try OpenSSH.Cipher(consuming: &buffer)
@@ -339,22 +339,24 @@ extension OpenSSH.PrivateKey {
             let numberOfKeys = buffer.readInteger(as: UInt32.self),
             numberOfKeys == 1 // # of keys always one
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.unsupportedFeature(.multipleKeys)
         }
         
         self.numberOfKeys = Int(numberOfKeys)
         
         guard var publicKeyBuffer = buffer.readSSHBuffer() else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingPublicKeyBuffer
         }
         
         let publicKeyType = try OpenSSH.KeyType(consuming: &publicKeyBuffer)
-        guard publicKeyType.rawValue == SSHKey.publicKeyPrefix else { throw InvalidKey() }
-        
+        guard publicKeyType.rawValue == SSHKey.publicKeyPrefix else {
+            throw InvalidOpenSSHKey.invalidPublicKeyPrefix
+        }
+
         self.publicKey = try SSHKey.PublicKey.read(consuming: &publicKeyBuffer)
         
         guard var privateKeyBuffer = buffer.readSSHBuffer() else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingPrivateKeyBuffer
         }
         
         try kdf.withKeyAndIV(
@@ -369,21 +371,21 @@ extension OpenSSH.PrivateKey {
             let check1 = privateKeyBuffer.readInteger(as: UInt32.self),
             check0 == check1
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidCheck
         }
-        
+
         let privateKeyType = try OpenSSH.KeyType(consuming: &privateKeyBuffer)
         guard
             privateKeyType.rawValue == SSHKey.privateKeyPrefix,
             privateKeyType == publicKeyType
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidPublicKeyInPrivateKey
         }
         
         self.privateKey = try SSHKey.read(consuming: &privateKeyBuffer)
         
         guard let comment = privateKeyBuffer.readSSHString() else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.missingComment
         }
         self.comment = comment
         
@@ -393,7 +395,7 @@ extension OpenSSH.PrivateKey {
             paddingLength < cipher.blockSize,
             let padding = privateKeyBuffer.readBytes(length: paddingLength)
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.invalidPadding
         }
         
         if paddingLength == 0 {
@@ -402,7 +404,7 @@ extension OpenSSH.PrivateKey {
         
         for i in 1..<paddingLength {
             guard padding[i - 1] == UInt8(i) else {
-                throw InvalidKey()
+                throw InvalidOpenSSHKey.invalidPadding
             }
         }
     }
@@ -414,7 +416,7 @@ extension OpenSSH.Cipher {
             let cipherName = buffer.readSSHString(),
             let cipher = Self(rawValue: cipherName)
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.unsupportedFeature(.unsupportedCipher)
         }
         self = cipher
     }
@@ -427,13 +429,13 @@ extension OpenSSH.KDF {
             let kdf = KDFType(rawValue: kdfName),
             var options = buffer.readSSHBuffer()
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.unsupportedFeature(.unsupportedKDF)
         }
         
         switch kdf {
         case .none:
             guard options.readableBytes == 0 else {
-                throw InvalidKey()
+                throw InvalidOpenSSHKey.unexpectedKDFNoneOptions
             }
             
             self = .none
@@ -443,7 +445,7 @@ extension OpenSSH.KDF {
                 let rounds: UInt32 = options.readInteger(),
                 rounds < 18
             else {
-                throw InvalidKey()
+                throw InvalidOpenSSHKey.invalidOrUnsupportedBCryptConfig
             }
             
             self = .bcrypt(salt: salt, iterations: rounds)
@@ -457,7 +459,7 @@ extension OpenSSH.KeyType {
             let keyName = buffer.readSSHString(),
             let keyType = Self(rawValue: keyName)
         else {
-            throw InvalidKey()
+            throw InvalidOpenSSHKey.unsupportedFeature(.unsupportedPublicKeyType)
         }
         self = keyType
     }
