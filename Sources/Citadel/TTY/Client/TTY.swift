@@ -155,7 +155,7 @@ extension SSHClient {
     /// - inShell:  Whether to request the remote server to start a shell before executing the command.
     public func executeCommandStream(_ command: String, inShell: Bool = false) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
         var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
-        let stream = AsyncThrowingStream<ExecCommandOutput, Error> { continuation in
+        let stream = AsyncThrowingStream<ExecCommandOutput, Error>(bufferingPolicy: .unbounded) { continuation in
             streamContinuation = continuation
         }
         
@@ -218,11 +218,11 @@ extension SSHClient {
     public func executeCommandPair(_ command: String, inShell: Bool = false) async throws -> ExecCommandStream {
         var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
-        let stdout = AsyncThrowingStream<ByteBuffer, Error> { continuation in
+        let stdout = AsyncThrowingStream<ByteBuffer, Error>(bufferingPolicy: .unbounded) { continuation in
             stdoutContinuation = continuation
         }
         
-        let stderr = AsyncThrowingStream<ByteBuffer, Error> { continuation in
+        let stderr = AsyncThrowingStream<ByteBuffer, Error>(bufferingPolicy: .unbounded) { continuation in
             stderrContinuation = continuation
         }
         
