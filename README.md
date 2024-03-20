@@ -1,6 +1,6 @@
-# Citadel
+<a href="https://unbeatable.software"><img src="./assets/Citadel.png" /></a>
 
-Citadel is a high level API around [NIOSSH](https://github.com/apple/swift-nio-ssh). It aims to add what's out of scope for NIOSSH, lending code from my private tools.
+Citadel is a high level API around [NIOSSH](https://github.com/apple/swift-nio-ssh). It makes NIOSSH accessible and easy to adopt, while providing tools otherwise out-of-scope for NIOSSH.
 
 Citadel is in active development by our team or Swift experts. Get in touch with our [Discord Community](https://discord.gg/H6799jh).
 
