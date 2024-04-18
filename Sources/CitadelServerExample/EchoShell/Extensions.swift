@@ -13,8 +13,7 @@
 
 import Foundation
 
-public extension Date {
-    
+extension Date {   
     func getDateFormattedBy(_ format: String, utc: Bool = true) -> String {
         let dateformat = DateFormatter()
         if utc {

@@ -6,19 +6,40 @@ public enum ShellClientEvent {
     case stdin(ByteBuffer)
 }
 
-public enum ShellServerEvent {
-    case stdout(ByteBuffer)
+public struct ShellServerEvent: Sendable {
+    internal enum Event {
+        case stdout(ByteBuffer)
+    }
+    
+    let event: Event
+
+    public static func stdout(_ data: ByteBuffer) -> ShellServerEvent {
+        ShellServerEvent(event: .stdout(data))
+    }
 }
 
 public protocol ShellDelegate {
     func startShell(
-        reading stream: AsyncStream<ShellClientEvent>,
+        inbound: AsyncStream<ShellClientEvent>,
+        outbound: ShellOutboundWriter,
         context: SSHShellContext
-    ) async throws -> AsyncThrowingStream<ShellServerEvent, Error>
+    ) async throws
 }
 
-fileprivate struct ShellContinuation {
-    var continuation: AsyncStream<ShellClientEvent>.Continuation!
+public struct ShellOutboundWriter: Sendable {
+    let continuation: AsyncThrowingStream<ShellServerEvent, Error>.Continuation
+
+    public func write(_ string: String) {
+        write(ByteBuffer(string: string))
+    }
+    
+    public func write(_ data: [UInt8]) {
+        write(ByteBuffer(bytes: data))
+    }
+    
+    public func write(_ data: ByteBuffer) {
+        continuation.yield(.stdout(data))
+    }
 }
 
 final class ShellServerInboundHandler: ChannelInboundHandler {
@@ -28,20 +49,14 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
     let delegate: ShellDelegate
     let username: String?
     let eventLoop: EventLoop
-    fileprivate var streamWriter: ShellContinuation
-    let stream: AsyncStream<ShellClientEvent>
+    let inbound = AsyncStream<ShellClientEvent>.makeStream()
+    let outbound = AsyncThrowingStream<ShellServerEvent, Error>.makeStream()
     
     init(logger: Logger, delegate: ShellDelegate, eventLoop: EventLoop, username: String?) {
         self.logger = logger
         self.delegate = delegate
         self.username = username
         self.eventLoop = eventLoop
-        
-        var streamWriter = ShellContinuation()
-        self.stream = AsyncStream { continuation in
-            streamWriter.continuation = continuation
-        }
-        self.streamWriter = streamWriter
     }
     
     func handlerAdded(context: ChannelHandlerContext) {
@@ -54,26 +69,39 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
 
         let done = context.eventLoop.makePromise(of: Void.self)
         done.completeWithTask {
-            let output = try await self.delegate.startShell(
-                reading: self.stream,
-                context: shellContext
-            )
-            
-            for try await chunk in output {
-                switch chunk {
-                case .stdout(let data):
-                    try await channel.writeAndFlush(data)
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await self.delegate.startShell(
+                        inbound: self.inbound.stream,
+                        outbound: ShellOutboundWriter(continuation: self.outbound.continuation),
+                        context: shellContext
+                    )
+                }
+
+                group.addTask {
+                    for try await message in self.outbound.stream {
+                        switch message.event {
+                        case .stdout(let data):
+                            try await channel.writeAndFlush(data)
+                        }
+                    }
+                }
+
+                do {
+                    try await group.next()
+                    try await shellContext.close()
+                } catch {
+                    try await shellContext.close()
+                    throw error
                 }
             }
-
-            try await shellContext.close(mode: .output)
         }
 
         done.futureResult.whenFailure(context.fireErrorCaught)
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        streamWriter.continuation.yield(.stdin(unwrapInboundIn(data)))
+        inbound.continuation.yield(.stdin(unwrapInboundIn(data)))
     }
     
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {

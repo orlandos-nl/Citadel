@@ -1,21 +1,36 @@
 import Citadel
+import Crypto
+import Foundation
 import NIO
 import NIOSSH
 
 @main struct ExampleSSHServer {
     static func main() async throws {
+        let privateKey: Curve25519.Signing.PrivateKey
+        let privateKeyURL = URL(fileURLWithPath: "./citadel_host_key_ed25519")
+
+        // Read or create a private key
+        if let file = try? Data(contentsOf: privateKeyURL) {
+            // File exists, read it into a Curve25519 private key
+            privateKey = try Curve25519.Signing.PrivateKey(sshEd25519: file)
+        } else {
+            // File does not exist, create a new Curve25519 private
+            privateKey = Curve25519.Signing.PrivateKey()
+
+            // Write the private key to a file
+            try privateKey.makeSSHRepresentation().write(to: privateKeyURL, atomically: true, encoding: .utf8)
+        }
+
         let server = try await SSHServer.host(
             host: "localhost",
-            port: 2222,
+            port: 2323,
             hostKeys: [
-                // .init(p521Key: .init())
-                .init() // inits a host key file
+                NIOSSHPrivateKey(ed25519Key: privateKey)
             ],
             authenticationDelegate: LoginHandler(username: "joannis", password: "test")
         )
         
-         server.enableShell(withDelegate: EchoShell())
-        // server.enableShell(withDelegate: TTYShell())
+         server.enableShell(withDelegate: SimpleShell())
         
         try await server.closeFuture.get()
     }
@@ -38,67 +53,5 @@ struct LoginHandler: NIOSSHServerUserAuthenticationDelegate {
         }
         
         return responsePromise.succeed(.failure)
-    }
-}
-
-// Simply prints out what the user it typing
-// Without this, the user wouldn't see their own input
-public struct TTYShell: ShellDelegate {
-    public func startShell(
-        reading stream: AsyncStream<ShellClientEvent>,
-        context: SSHShellContext
-    ) async throws -> AsyncThrowingStream<ShellServerEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let message = "Hello \(context.session.username ?? "stranger")"
-            continuation.yield(.stdout(ByteBuffer(string: message)))
-            
-            Task {
-                for await message in stream {
-                    if case .stdin(let message) = message {
-                        var bytes = message.getBytes(at: message.readerIndex, length: message.readableBytes)!
-                        var i = bytes.count
-                        while i > 0 {
-                            i -= 1
-                            // Put LF in front of CR
-                            if bytes[i] == 0x0d { // CR
-                                bytes.insert(0x0a, at: i) // CL
-                            }
-                        }
-                        
-                        continuation.yield(.stdout(ByteBuffer(bytes: bytes)))
-                    }
-                }
-                
-                continuation.finish()
-            }
-        }
-    }
-}
-
-// Simple shell emulator that returns the user input and offers some basic commands like: help, history, clear, whoami, date and exit.
-public struct EchoShell: ShellDelegate {
-    public func startShell(reading stream: AsyncStream<ShellClientEvent>,
-                           context: SSHShellContext
-    ) async throws -> AsyncThrowingStream<ShellServerEvent, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
-                // embedd the EchoShell
-                let shell = EchoShellMaster(continuation: continuation,
-                                            context: context)
-                shell.set_usr(context.session.username)
-
-                for await message in stream {
-                    if case .stdin(let input) = message {
-                        let bytes = input.getBytes(at: input.readerIndex, length: input.readableBytes)!
-                        try await shell.write_input(bytes)
-                    }
-
-                    if context.isClosed || Task.isCancelled {
-                        break
-                    }
-                }
-                continuation.finish()
-            }
-        }
     }
 }
