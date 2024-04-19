@@ -34,6 +34,11 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
+        .executableTarget(
+            name: "CitadelServerExample",
+            dependencies: [
+                "Citadel"
+            ]),
         .testTarget(
             name: "CitadelTests",
             dependencies: [
