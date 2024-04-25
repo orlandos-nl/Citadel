@@ -1,20 +1,20 @@
-enum SSHClientError: Error {
+public enum SSHClientError: Error {
     case unsupportedPasswordAuthentication, unsupportedPrivateKeyAuthentication, unsupportedHostBasedAuthentication
     case channelCreationFailed
     case allAuthenticationOptionsFailed
 }
 
-enum SSHChannelError: Error {
+public enum SSHChannelError: Error {
     case invalidDataType
 }
 
-enum SSHExecError: Error {
+public enum SSHExecError: Error {
     case commandExecFailed
     case invalidChannelType
     case invalidData
 }
 
-enum SFTPError: Error {
+public enum SFTPError: Error {
     case unknownMessage
     case invalidPayload(type: SFTPMessageType)
     case invalidResponse
@@ -26,7 +26,7 @@ enum SFTPError: Error {
     case unsupportedVersion(SFTPProtocolVersion)
 }
 
-enum CitadelError: Error {
+public enum CitadelError: Error {
     case invalidKeySize
     case invalidEncryptedPacketLength
     case invalidDecryptedPlaintextLength
