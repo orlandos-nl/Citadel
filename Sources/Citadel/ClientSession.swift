@@ -1,7 +1,6 @@
 import NIO
 import NIOSSH
 
-struct AuthenticationFailed: Error, Equatable {}
 final class ClientHandshakeHandler: ChannelInboundHandler {
     typealias InboundIn = Any
 
@@ -15,16 +14,17 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     init(eventLoop: EventLoop) {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
-
-        eventLoop.scheduleTask(in: .seconds(10)) {
-            promise.fail(AuthenticationFailed())
-        }
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        print(event)
         if event is UserAuthSuccessEvent {
             self.promise.succeed(())
         }
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        self.promise.fail(error)
     }
     
     deinit {
@@ -50,14 +50,14 @@ final class SSHClientSession {
     /// - group: The event loop group to use, will use a new group with one thread if not specified.
     public static func connect(
         on channel: Channel,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: channel.eventLoop)
         var clientConfiguration = SSHClientConfiguration(
-            userAuthDelegate: authenticationMethod,
+            userAuthDelegate: authenticationMethod(),
             serverAuthDelegate: hostKeyValidator
         )
         
@@ -95,7 +95,7 @@ final class SSHClientSession {
     public static func connect(
         host: String,
         port: Int = 22,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
@@ -104,7 +104,7 @@ final class SSHClientSession {
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(eventLoop: group.next())
         var clientConfiguration = SSHClientConfiguration(
-            userAuthDelegate: authenticationMethod,
+            userAuthDelegate: authenticationMethod(),
             serverAuthDelegate: hostKeyValidator
         )
         

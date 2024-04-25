@@ -65,7 +65,7 @@ public struct SSHAlgorithms {
 public final class SSHClient {
     private(set) var session: SSHClientSession
     private var userInitiatedClose = false
-    let authenticationMethod: SSHAuthenticationMethod
+    let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
     internal var connectionSettings = SSHConnectionSettings()
     private let algorithms: SSHAlgorithms
@@ -83,7 +83,7 @@ public final class SSHClient {
     
     init(
         session: SSHClientSession,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption>
@@ -111,21 +111,21 @@ public final class SSHClient {
     /// - Returns: An SSH client.
     public static func connect(
         on channel: Channel,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
             on: channel,
-            authenticationMethod: authenticationMethod,
+            authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             protocolOptions: protocolOptions
         )
         
         return SSHClient(
             session: session,
-            authenticationMethod: authenticationMethod,
+            authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             algorithms: algorithms,
             protocolOptions: protocolOptions
@@ -222,7 +222,7 @@ public final class SSHClient {
         self.session = try await SSHClientSession.connect(
             host: host,
             port: port,
-            authenticationMethod: authenticationMethod,
+            authenticationMethod: self.authenticationMethod(),
             hostKeyValidator: self.hostKeyValidator,
             protocolOptions: protocolOptions,
             group: session.channel.eventLoop
