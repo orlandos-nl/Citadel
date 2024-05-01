@@ -10,7 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/joannis/SwiftTUI.git", branch: "jo/allow-use-with-concurrency"),
-        .package(path: "/Users/joannisorlandos/git/joannis/SwiftTUI"),
+        .package(path: "../.."),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

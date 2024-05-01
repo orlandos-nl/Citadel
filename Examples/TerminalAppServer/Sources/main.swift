@@ -38,26 +38,31 @@ import SwiftTUI
     }
 }
 
+struct MyTerminalView: View {
+    var body: some View {
+        VStack {
+            Text("Hello, world!")
+                .background(.red)
+                .foregroundColor(.white)
+            
+            Button("Click me") {
+                print("clicked")
+            }
+
+            Button("Don't click") {
+                print("Clicked anyways")
+            }
+        }
+        .border()
+    }
+}
+
 final class CustomAppShell: ShellDelegate {
      @MainActor public func startShell(
         inbound: AsyncStream<ShellClientEvent>,
         outbound: ShellOutboundWriter,
         context: SSHShellContext
     ) async throws {
-        struct MyTerminalView: View {
-            var body: some View {
-                VStack {
-                    Text("Hello, world!")
-                    Button("Click me") {
-                        print("clicked")
-                    }
-                    Button("Don't click") {
-                        print("Clicked anyways")
-                    }
-                }
-            }
-        }
-
         let app = Application(rootView: MyTerminalView()) { string in
             outbound.write(ByteBuffer(string: string))
         }
