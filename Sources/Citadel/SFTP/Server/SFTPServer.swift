@@ -33,8 +33,14 @@ public struct SSHContext {
 }
 
 public struct SSHShellContext {
+    public struct WindowSize {
+        public let columns: Int
+        public let rows: Int
+    }
+
     public let session: SSHContext
     internal let channel: Channel
+    public let windowSize: AsyncStream<WindowSize>
 
     public var isClosed: Bool {
         !channel.isActive

@@ -51,6 +51,7 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
     let eventLoop: EventLoop
     let inbound = AsyncStream<ShellClientEvent>.makeStream()
     let outbound = AsyncThrowingStream<ShellServerEvent, Error>.makeStream()
+    let windowSize = AsyncStream<SSHShellContext.WindowSize>.makeStream()
     
     init(logger: Logger, delegate: ShellDelegate, eventLoop: EventLoop, username: String?) {
         self.logger = logger
@@ -64,7 +65,8 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
 
         let shellContext = SSHShellContext(
             session: SSHContext(username: self.username),
-            channel: channel
+            channel: channel,
+            windowSize: windowSize.stream
         )
 
         let done = context.eventLoop.makePromise(of: Void.self)
@@ -106,6 +108,8 @@ final class ShellServerInboundHandler: ChannelInboundHandler {
     
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
+        case let event as SSHChannelRequestEvent.WindowChangeRequest:
+            windowSize.continuation.yield(.init(columns: event.terminalCharacterWidth, rows: event.terminalRowHeight))
         default:
             context.fireUserInboundEventTriggered(event)
         }
