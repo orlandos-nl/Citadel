@@ -22,7 +22,7 @@ final class SFTPClientInboundHandler: ChannelInboundHandler {
                 logger.warning("SFTP ERROR: Server version is unrecognized or incompatible: \(version.version.rawValue)")
                 context.fireErrorCaught(SFTPError.unsupportedVersion(version.version))
             } else {
-                responses.initialized.succeed(version)
+                responses.sftpVersion.succeed(version)
             }
         } else if let response = SFTPResponse(message: message) {
             if let promise = responses.responses.removeValue(forKey: response.requestId) {

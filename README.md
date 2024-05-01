@@ -325,6 +325,8 @@ let client = try await SSHClient.connect(
 )
 ```
 
+You can also use `SSHAlgorithms.all` to enable all supported algorithms.
+
 ## TODO
 
 A couple of code is held back until further work in SwiftNIO SSH is completed. We're currently working with Apple to resolve these.
