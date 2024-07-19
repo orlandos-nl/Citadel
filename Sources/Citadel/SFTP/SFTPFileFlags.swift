@@ -2,7 +2,7 @@ import Foundation
 
 // pflags
 public struct SFTPOpenFileFlags: OptionSet, CustomDebugStringConvertible, Sendable {
-    public let rawValue: UInt32
+    public var rawValue: UInt32
     
     public init(rawValue: UInt32) {
         self.rawValue = rawValue
