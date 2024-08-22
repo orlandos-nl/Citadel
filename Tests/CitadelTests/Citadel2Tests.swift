@@ -253,6 +253,7 @@ final class Citadel2Tests: XCTestCase {
             _ = try await file.read(from: UInt64(i * 32_768), length: 32_768)
             i += 1
         }
+        try await file.close()
     }
 
     func testConnectToOpenSSHServer() async throws {
