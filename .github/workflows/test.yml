@@ -33,6 +33,6 @@ jobs:
               env:
                 SWIFT_DETERMINISTIC_HASHING: 1
                 SSH_HOST: ssh-server
-                SSH_POST: 2222
+                SSH_PORT: 2222
                 SSH_USERNAME: citadel
                 SSH_PASSWORD: hunter2
