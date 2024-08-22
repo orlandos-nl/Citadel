@@ -254,4 +254,28 @@ final class Citadel2Tests: XCTestCase {
             i += 1
         }
     }
+
+    func testConnectToOpenSSHServer() async throws {
+        guard
+            let host = ProcessInfo.processInfo.environment["SSH_HOST"],
+            let _port = ProcessInfo.processInfo.environment["SSH_PORT"],
+            let port = Int(_port),
+            let username = ProcessInfo.processInfo.environment["SSH_USERNAME"],
+            let password = ProcessInfo.processInfo.environment["SSH_PASSWORD"]
+        else {
+            throw XCTSkip()
+        }
+
+        let client = try await SSHClient.connect(
+            host: host,
+            port: port,
+            authenticationMethod: .passwordBased(username: username, password: password),
+            hostKeyValidator: .acceptAnything(),
+            reconnect: .never
+        )
+
+        _ = try await client.executeCommand("ls")
+
+        try await client.close()
+    }
 }
