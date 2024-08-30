@@ -58,9 +58,12 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     typealias OutboundOut = SSHChannelData
 
     let logger: Logger
-    let onOutput: (Channel, Output) -> ()
-    
-    init(logger: Logger, onOutput: @escaping (Channel, Output) -> ()) {
+    let onOutput: (Channel, Output) -> Void
+
+    init(
+        logger: Logger,
+        onOutput: @escaping (Channel, Output) -> Void
+    ) {
         self.logger = logger
         self.onOutput = onOutput
     }
@@ -160,6 +163,7 @@ extension SSHClient {
         }
         
         var hasReceivedChannelSuccess = false
+        var exitCode: Int?
 
         let handler = ExecCommandHandler(logger: logger) { channel, output in
             switch output {
@@ -168,7 +172,13 @@ extension SSHClient {
             case .stderr(let stderr):
                 streamContinuation.yield(.stderr(stderr))
             case .eof(let error):
-                streamContinuation.finish(throwing: error)
+                if let error {
+                    streamContinuation.finish(throwing: error)
+                } else if let exitCode, exitCode != 0 {
+                    streamContinuation.finish(throwing: CommandFailed(exitCode: exitCode))
+                } else {
+                    streamContinuation.finish()
+                }
             case .channelSuccess:
                 if inShell, !hasReceivedChannelSuccess {
                     let commandData = SSHChannelData(type: .channel,
@@ -177,11 +187,7 @@ extension SSHClient {
                     hasReceivedChannelSuccess = true
                 }
             case .exit(let status):
-                if status == 0 {
-                    streamContinuation.finish()
-                } else {
-                    streamContinuation.finish(throwing: CommandFailed(exitCode: status))
-                }
+                exitCode = status
             }
         }
 

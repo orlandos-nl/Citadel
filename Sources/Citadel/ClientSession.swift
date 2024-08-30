@@ -17,7 +17,6 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-        print(event)
         if event is UserAuthSuccessEvent {
             self.promise.succeed(())
         }

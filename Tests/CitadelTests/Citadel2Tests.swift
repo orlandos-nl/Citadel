@@ -275,7 +275,8 @@ final class Citadel2Tests: XCTestCase {
             reconnect: .never
         )
 
-        _ = try await client.executeCommand("ls")
+        let output = try await client.executeCommand("ls /")
+        XCTAssertFalse(String(buffer: output).isEmpty)
 
         try await client.close()
     }
