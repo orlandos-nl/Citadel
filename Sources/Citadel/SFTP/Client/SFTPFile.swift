@@ -40,7 +40,9 @@ public final class SFTPFile {
     public var logger: Logging.Logger { self.client.logger }
     
     deinit {
-        assert(!self.client.isActive || !self.isActive, "SFTPFile deallocated without being closed first")
+        if client.isActive && self.isActive {
+            self.logger.warning("SFTPFile deallocated without being closed first")
+        }
     }
     
     /// Read the attributes of the file. This is equivalent to the `stat()` system call.

@@ -4,22 +4,6 @@ import Crypto
 import NIO
 import NIOSSH
 
-enum CitadelError: Error {
-    case invalidKeySize
-    case invalidEncryptedPacketLength
-    case invalidDecryptedPlaintextLength
-    case insufficientPadding, excessPadding
-    case invalidMac
-    case cryptographicError
-    case invalidSignature
-    case signingError
-    case unsupported
-    case unauthorized
-    case commandOutputTooLarge
-    case channelCreationFailed
-    case channelFailure
-}
-
 public final class AES128CTR: NIOSSHTransportProtection {
     private enum Mac {
         case sha1, sha256, sha512

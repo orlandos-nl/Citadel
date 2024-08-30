@@ -1,17 +1,25 @@
 import Foundation
 import NIO
+import NIOConcurrencyHelpers
 import NIOSSH
 import Logging
 
 /// The SFTP client does not concern itself with the created SSH subsystem channel.
 ///
 /// Per specification, SFTP could be used over other transport layers, too.
-public final class SFTPClient {
+public final class SFTPClient: Sendable {
     /// The SSH child channel created for this connection.
     fileprivate let channel: Channel
     
     /// A monotonically increasing counter for gneerating request IDs.
-    private var nextRequestId: UInt32 = 0
+    private let _nextRequestId = NIOLockedValueBox<UInt32>(0)
+
+    private func incrementAndGetNextRequestId() -> UInt32 {
+        _nextRequestId.withLockedValue { value in
+            value &+= 1
+            return value
+        }
+    }
     
     /// In-flight request ID tracker.
     fileprivate let responses: SFTPResponses
@@ -26,7 +34,7 @@ public final class SFTPClient {
     }
     
     fileprivate static func setupChannelHanders(channel: Channel, logger: Logger) -> EventLoopFuture<SFTPClient> {
-        let responses = SFTPResponses(initialized: channel.eventLoop.makePromise())
+        let responses = SFTPResponses(sftpVersion: channel.eventLoop.makePromise())
         
         let deserializeHandler = ByteToMessageHandler(SFTPMessageParser())
         let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
@@ -64,10 +72,7 @@ public final class SFTPClient {
     /// Returns a unique request ID for use in an SFTP message. Does _not_ register the ID for
     /// a response; that is handled by `sendRequest(_:)`.
     internal func allocateRequestId() -> UInt32 {
-        defer {
-            self.nextRequestId &+= 1
-        }
-        return self.nextRequestId
+        return incrementAndGetNextRequestId()
     }
     
     /// Sends an SFTP request. The request's ID is used to track the response.
@@ -310,7 +315,9 @@ extension SSHClient {
             
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
                 SFTPClient.setupChannelHanders(channel: channel, logger: logger)
-                    .map(createClient.succeed)
+                    .map { client in
+                        createClient.succeed(client)
+                    }
             }
             
             timeoutCheck.futureResult.whenFailure { _ in
@@ -349,7 +356,7 @@ extension SSHClient {
                 //logger.trace("SFTP OUT: \(initializeMessage.debugRawBytesRepresentation)")
 
                 return client.channel.writeAndFlush(initializeMessage).flatMap {
-                    return client.responses.initialized.futureResult
+                    return client.responses.sftpVersion.futureResult
                 }.flatMapThrowing { serverVersion in
                     guard serverVersion.version >= .v3 else {
                         logger.warning("SFTP ERROR: Server version is unrecognized: \(serverVersion.version.rawValue)")
@@ -365,29 +372,33 @@ extension SSHClient {
 }
 
 /// A tracker for in-flight SFTP requests. Request IDs are allocated by `SFTPClient`.
-final class SFTPResponses {
-    var isInitialized: Bool = false
-    let initialized: EventLoopPromise<SFTPMessage.Version>
+final class SFTPResponses: @unchecked Sendable {
+    let _initialized: NIOLockedValueBox<Bool> = NIOLockedValueBox<Bool>(false)
+    var isInitialized: Bool {
+        get { _initialized.withLockedValue { $0 } }
+        set { _initialized.withLockedValue { $0 = newValue } }
+    }
+    let sftpVersion: EventLoopPromise<SFTPMessage.Version>
     var responses = [UInt32: EventLoopPromise<SFTPResponse>]()
     
-    init(initialized: EventLoopPromise<SFTPMessage.Version>) {
-        self.initialized = initialized
+    init(sftpVersion: EventLoopPromise<SFTPMessage.Version>) {
+        self.sftpVersion = sftpVersion
         
-        initialized.futureResult.whenSuccess { [unowned self] _ in
-            self.isInitialized = true
+        sftpVersion.futureResult.whenSuccess { [weak self] _ in
+            self?.isInitialized = true
         }
-    }
-    
-    deinit {
-        self.close()
     }
     
     func close() {
         self.isInitialized = false
-        self.initialized.fail(SFTPError.connectionClosed)
+        self.sftpVersion.fail(SFTPError.connectionClosed)
         
         for promise in self.responses.values {
             promise.fail(SFTPError.connectionClosed)
         }
+    }
+
+    deinit {
+        close()
     }
 }

@@ -185,6 +185,8 @@ public final class SSHServer {
         let delegate = CitadelServerDelegate()
         
         let bootstrap = ServerBootstrap(group: group)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
                 var server = SSHServerConfiguration(
                     hostKeys: hostKeys,

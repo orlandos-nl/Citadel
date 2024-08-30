@@ -1,0 +1,39 @@
+name: test
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+on:
+    pull_request: { types: [opened, reopened, synchronize, ready_for_review] }
+    push: { branches: [main] }
+
+env:
+    LOG_LEVEL: info
+    SWIFT_DETERMINISTIC_HASHING: 1
+jobs:
+    test:
+        services:
+            ssh-server:
+                image: lscr.io/linuxserver/openssh-server:latest
+                ports:
+                    - 2222:2222
+                env:
+                    USER_NAME: citadel
+                    USER_PASSWORD: hunter2
+                    PASSWORD_ACCESS: true
+        runs-on: ubuntu-latest
+        container: 
+          image: swift:5.10-jammy
+          env:
+            SWIFT_DETERMINISTIC_HASHING: 1
+        steps:
+            - uses: actions/checkout@v4
+            - name: Resolve
+              run: swift package resolve
+            - name: Run tests
+              run: swift test
+              env:
+                SWIFT_DETERMINISTIC_HASHING: 1
+                SSH_HOST: ssh-server
+                SSH_PORT: 2222
+                SSH_USERNAME: citadel
+                SSH_PASSWORD: hunter2

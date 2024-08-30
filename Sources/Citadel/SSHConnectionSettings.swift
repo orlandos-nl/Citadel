@@ -24,7 +24,7 @@ internal struct _SSHReconnectMode {
     internal static let never = _SSHReconnectMode(mode: .never)
 }
 
-public struct SSHReconnectMode: Equatable {
+public struct SSHReconnectMode: Equatable, Sendable {
     internal enum _Mode {
         case once, always, never
     }

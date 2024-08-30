@@ -3,25 +3,28 @@ import NIOSSH
 import Crypto
 
 /// Represents an authentication method.
-public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
+public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
     private enum Implementation {
         case custom(NIOSSHClientUserAuthenticationDelegate)
         case user(String, offer: NIOSSHUserAuthenticationOffer.Offer)
     }
     
-    private let implementation: Implementation
+    private let allImplementations: [Implementation]
+    private var implementations: [Implementation]
     
     internal init(
         username: String,
         offer: NIOSSHUserAuthenticationOffer.Offer
     ) {
-        self.implementation = .user(username, offer: offer)
+        self.allImplementations = [.user(username, offer: offer)]
+        self.implementations = allImplementations
     }
     
     internal init(
         custom: NIOSSHClientUserAuthenticationDelegate
     ) {
-        self.implementation = .custom(custom)
+        self.allImplementations = [.custom(custom)]
+        self.implementations = allImplementations
     }
     
     /// Creates a password based authentication method.
@@ -80,6 +83,13 @@ public struct SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
         availableMethods: NIOSSHAvailableUserAuthenticationMethods,
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
+        if implementations.isEmpty {
+            nextChallengePromise.fail(SSHClientError.allAuthenticationOptionsFailed)
+            return
+        }
+        
+        let implementation = implementations.removeFirst()
+
         switch implementation {
         case .user(let username, offer: let offer):
             switch offer {

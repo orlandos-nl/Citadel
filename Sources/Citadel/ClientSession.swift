@@ -16,18 +16,16 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     init(eventLoop: EventLoop, loginTimeout: TimeAmount) {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
-        
-        struct AuthenticationFailed: Error {}
-        eventLoop.scheduleTask(in: loginTimeout) {
-            self.logger.debug("SSH login failed after timeout")
-            promise.fail(AuthenticationFailed())
-        }
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         if event is UserAuthSuccessEvent {
             self.promise.succeed(())
         }
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        self.promise.fail(error)
     }
     
     deinit {
@@ -53,7 +51,7 @@ final class SSHClientSession {
     /// - group: The event loop group to use, will use a new group with one thread if not specified.
     public static func connect(
         on channel: Channel,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
@@ -63,7 +61,7 @@ final class SSHClientSession {
             loginTimeout: .seconds(10)
         )
         var clientConfiguration = SSHClientConfiguration(
-            userAuthDelegate: authenticationMethod,
+            userAuthDelegate: authenticationMethod(),
             serverAuthDelegate: hostKeyValidator
         )
         
@@ -101,7 +99,7 @@ final class SSHClientSession {
     public static func connect(
         host: String,
         port: Int = 22,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
@@ -113,7 +111,7 @@ final class SSHClientSession {
             loginTimeout: .seconds(10)
         )
         var clientConfiguration = SSHClientConfiguration(
-            userAuthDelegate: authenticationMethod,
+            userAuthDelegate: authenticationMethod(),
             serverAuthDelegate: hostKeyValidator
         )
         
@@ -147,7 +145,7 @@ final class SSHClientSession {
     }
 }
 
-public struct InvalidHostKey: Error {}
+public struct InvalidHostKey: Error, Equatable {}
 
 /// A host key validator that can be used to validate an SSH host key. This can be used to validate the host key against a set of trusted keys, or to accept any key.
 public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {

@@ -1,6 +1,60 @@
 import NIO
+import Crypto
 import Logging
 import NIOSSH
+
+extension SSHAlgorithms.Modification<NIOSSHTransportProtection.Type> {
+    func apply(to configuration: inout [any NIOSSHTransportProtection.Type]) {
+        switch self {
+        case .add(let algorithms):
+            configuration.append(contentsOf: algorithms)
+            
+            for algorithm: any NIOSSHTransportProtection.Type in algorithms {
+                NIOSSHAlgorithms.register(transportProtectionScheme: algorithm)
+            }
+        case .replace(with: let algorithms):
+            configuration = algorithms
+            
+            for algorithm in algorithms {
+                NIOSSHAlgorithms.register(transportProtectionScheme: algorithm)
+            }
+        }
+    }
+}
+
+extension SSHAlgorithms.Modification<NIOSSHKeyExchangeAlgorithmProtocol.Type> {
+    func apply(to configuration: inout [any NIOSSHKeyExchangeAlgorithmProtocol.Type]) {
+        switch self {
+        case .add(let algorithms):
+            configuration.append(contentsOf: algorithms)
+            
+            for algorithm in algorithms {
+                NIOSSHAlgorithms.register(keyExchangeAlgorithm: algorithm)
+            }
+        case .replace(with: let algorithms):
+            configuration = algorithms
+            
+            for algorithm in algorithms {
+                NIOSSHAlgorithms.register(keyExchangeAlgorithm: algorithm)
+            }
+        }
+    }
+}
+
+extension SSHAlgorithms.Modification<(NIOSSHPublicKeyProtocol.Type, NIOSSHSignatureProtocol.Type)>{
+    func register() {
+        switch self {
+        case .add(let algorithms):
+            for (publicKey, signature) in algorithms {
+                NIOSSHAlgorithms.register(publicKey: publicKey, signature: signature)
+            }
+        case .replace(with: let algorithms):
+            for (publicKey, signature) in algorithms {
+                NIOSSHAlgorithms.register(publicKey: publicKey, signature: signature)
+            }
+        }
+    }
+}
 
 public struct SSHAlgorithms {
     /// Represents a modification to a list of items.
@@ -18,54 +72,47 @@ public struct SSHAlgorithms {
     /// The enabled KeyExchangeAlgorithms
     public var keyExchangeAlgorithms: Modification<NIOSSHKeyExchangeAlgorithmProtocol.Type>?
 
+    public var publicKeyAlgorihtms: Modification<(NIOSSHPublicKeyProtocol.Type, NIOSSHSignatureProtocol.Type)>?
+
     func apply(to clientConfiguration: inout SSHClientConfiguration) {
-        switch transportProtectionSchemes {
-        case .add(let algorithms):
-            clientConfiguration.transportProtectionSchemes.append(contentsOf: algorithms)
-        case .replace(with: let algorithms):
-            clientConfiguration.transportProtectionSchemes = algorithms
-        case .none:
-            ()
-        }
-        
-        switch keyExchangeAlgorithms {
-        case .add(let algorithms):
-            clientConfiguration.keyExchangeAlgorithms.append(contentsOf: algorithms)
-        case .replace(with: let algorithms):
-            clientConfiguration.keyExchangeAlgorithms = algorithms
-        case .none:
-            ()
-        }
+        transportProtectionSchemes?.apply(to: &clientConfiguration.transportProtectionSchemes)
+        keyExchangeAlgorithms?.apply(to: &clientConfiguration.keyExchangeAlgorithms)
+        publicKeyAlgorihtms?.register()
     }
     
     func apply(to serverConfiguration: inout SSHServerConfiguration) {
-        switch transportProtectionSchemes {
-        case .add(let algorithms):
-            serverConfiguration.transportProtectionSchemes.append(contentsOf: algorithms)
-        case .replace(with: let algorithms):
-            serverConfiguration.transportProtectionSchemes = algorithms
-        case .none:
-            ()
-        }
-        
-        switch keyExchangeAlgorithms {
-        case .add(let algorithms):
-            serverConfiguration.keyExchangeAlgorithms.append(contentsOf: algorithms)
-        case .replace(with: let algorithms):
-            serverConfiguration.keyExchangeAlgorithms = algorithms
-        case .none:
-            ()
-        }
+        transportProtectionSchemes?.apply(to: &serverConfiguration.transportProtectionSchemes)
+        keyExchangeAlgorithms?.apply(to: &serverConfiguration.keyExchangeAlgorithms)
+        publicKeyAlgorihtms?.register()
     }
     
     public init() {}
+
+    public static let all: SSHAlgorithms = {
+        var algorithms = SSHAlgorithms()
+
+        algorithms.transportProtectionSchemes = .add([
+            AES128CTR.self
+        ])
+
+        algorithms.keyExchangeAlgorithms = .add([
+            DiffieHellmanGroup14Sha1.self,
+            DiffieHellmanGroup14Sha256.self
+        ])
+
+        algorithms.publicKeyAlgorihtms = .add([
+            (Insecure.RSA.PublicKey.self, Insecure.RSA.Signature.self),
+        ])
+
+        return algorithms
+    }()
 }
 
 /// Represents an SSH connection.
 public final class SSHClient {
     private(set) var session: SSHClientSession
     private var userInitiatedClose = false
-    let authenticationMethod: SSHAuthenticationMethod
+    let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
     internal var connectionSettings = SSHConnectionSettings()
     private let algorithms: SSHAlgorithms
@@ -83,7 +130,7 @@ public final class SSHClient {
     
     init(
         session: SSHClientSession,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption>
@@ -111,21 +158,21 @@ public final class SSHClient {
     /// - Returns: An SSH client.
     public static func connect(
         on channel: Channel,
-        authenticationMethod: SSHAuthenticationMethod,
+        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(
             on: channel,
-            authenticationMethod: authenticationMethod,
+            authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             protocolOptions: protocolOptions
         )
         
         return SSHClient(
             session: session,
-            authenticationMethod: authenticationMethod,
+            authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             algorithms: algorithms,
             protocolOptions: protocolOptions
@@ -222,7 +269,7 @@ public final class SSHClient {
         self.session = try await SSHClientSession.connect(
             host: host,
             port: port,
-            authenticationMethod: authenticationMethod,
+            authenticationMethod: self.authenticationMethod(),
             hostKeyValidator: self.hostKeyValidator,
             protocolOptions: protocolOptions,
             group: session.channel.eventLoop
