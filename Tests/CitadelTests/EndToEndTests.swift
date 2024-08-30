@@ -21,8 +21,6 @@ final class AuthDelegate: NIOSSHServerUserAuthenticationDelegate {
     }
 }
 
-struct InvalidCredentials: Error, Equatable {}
-
 final class EndToEndTests: XCTestCase {
     func runTest<ExpectedError: Error & Equatable>(
         credentials: SSHAuthenticationMethod,
@@ -59,7 +57,7 @@ final class EndToEndTests: XCTestCase {
             case .password(.init(password: "test")) where request.username == "citadel":
                 promise.succeed(.success)
             default:
-                promise.fail(InvalidCredentials())
+                promise.succeed(.failure)
             }
         }
         let server = try await SSHServer.host(
@@ -104,7 +102,7 @@ final class EndToEndTests: XCTestCase {
                 password: "wrong"
             ),
             hostKeyValidator: .acceptAnything(),
-            expectedError: AuthenticationFailed()
+            expectedError: SSHClientError.allAuthenticationOptionsFailed
         )
     }
 
@@ -115,7 +113,7 @@ final class EndToEndTests: XCTestCase {
                 password: "test"
             ),
             hostKeyValidator: .acceptAnything(),
-            expectedError: AuthenticationFailed()
+            expectedError: SSHClientError.allAuthenticationOptionsFailed
         )
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 
 // pflags
-public struct SFTPOpenFileFlags: OptionSet, CustomDebugStringConvertible {
+public struct SFTPOpenFileFlags: OptionSet, CustomDebugStringConvertible, Sendable {
     public var rawValue: UInt32
     
     public init(rawValue: UInt32) {

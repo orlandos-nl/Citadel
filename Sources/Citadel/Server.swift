@@ -127,6 +127,7 @@ final class CitadelServerDelegate {
     var sftp: SFTPDelegate?
     var exec: ExecDelegate?
     var shell: ShellDelegate?
+    var directTCPIP: DirectTCPIPDelegate?
     
     fileprivate init() {}
     
@@ -144,7 +145,19 @@ final class CitadelServerDelegate {
             handlers.append(ExecHandler(delegate: exec, username: username))
             
             return channel.pipeline.addHandlers(handlers)
-        case .directTCPIP, .forwardedTCPIP:
+        case .directTCPIP(let request):
+            guard let delegate = directTCPIP else {
+                return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
+            }
+
+            return channel.pipeline.addHandler(DataToBufferCodec()).flatMap {
+                return delegate.initializeDirectTCPIPChannel(
+                    channel,
+                    request: request,
+                    context: SSHContext(username: username)
+                )
+            }
+        case .forwardedTCPIP:
             return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
         }
     }
@@ -183,6 +196,10 @@ public final class SSHServer {
     public func enableExec(withDelegate delegate: ExecDelegate) {
         self.delegate.exec = delegate
     }
+
+    public func enableDirectTCPIP(withDelegate delegate: DirectTCPIPDelegate) {
+        self.delegate.directTCPIP = delegate
+    }
     
     public func enableShell(withDelegate delegate: ShellDelegate) {
         self.delegate.shell = delegate
@@ -207,6 +224,8 @@ public final class SSHServer {
         let delegate = CitadelServerDelegate()
         
         let bootstrap = ServerBootstrap(group: group)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
                 var server = SSHServerConfiguration(
                     hostKeys: hostKeys,
