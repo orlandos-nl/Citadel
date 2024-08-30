@@ -16,15 +16,14 @@ import Crypto
 import NIOSSH
 
 public extension NIOSSHPrivateKey {
-    init(file: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("citadel_ssh_host_key")) throws {
+    init(file: URL = FileManager.default.temporaryDirectory.appendingPathComponent("citadel_ssh_host_key")) throws {
         let hostKeyFile = HostKey(file: file)
         try self.init(ed25519Key: .init(rawRepresentation: hostKeyFile.key))
     }
 }
 
 public struct HostKey {
-
-    init(file: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("citadel_ssh_host_key")) {
+    init(file: URL = FileManager.default.temporaryDirectory.appendingPathComponent("citadel_ssh_host_key")) {
         self.file = file
     }
 
