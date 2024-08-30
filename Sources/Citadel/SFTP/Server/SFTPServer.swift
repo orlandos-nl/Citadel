@@ -32,6 +32,25 @@ public struct SSHContext {
     public let username: String?
 }
 
+public struct SSHShellContext {
+    public struct WindowSize {
+        public let columns: Int
+        public let rows: Int
+    }
+
+    public let session: SSHContext
+    internal let channel: Channel
+    public let windowSize: AsyncStream<WindowSize>
+
+    public var isClosed: Bool {
+        !channel.isActive
+    }
+
+    public func close(mode: CloseMode = .all) async throws {
+        try await channel.close(mode: mode)
+    }
+}
+
 /// The delegate for the SFTP subsystem. This is the interface that the SFTP subsystem uses to interact with the rest of the application. The delegate is responsible for implementing the various SFTP operations.
 public protocol SFTPDelegate {
     /// Returns the attributes for the file at the given path. This is equivalent to the `stat()` system call.
@@ -69,10 +88,10 @@ public protocol SFTPDelegate {
     func rename(oldPath: String, newPath: String, flags: UInt32, context: SSHContext) async throws -> SFTPStatusCode
 }
 
-struct SFTPServerSubsystem {
+enum SFTPServerSubsystem {
     static func setupChannelHanders(
         channel: Channel,
-        delegate: SFTPDelegate,
+        sftp: SFTPDelegate,
         logger: Logger,
         username: String?
     ) -> EventLoopFuture<Void> {
@@ -80,7 +99,7 @@ struct SFTPServerSubsystem {
         let serializeHandler = MessageToByteHandler(SFTPMessageSerializer())
         let sftpInboundHandler = SFTPServerInboundHandler(
             logger: logger,
-            delegate: delegate,
+            delegate: sftp,
             eventLoop: channel.eventLoop,
             username: username
         )
