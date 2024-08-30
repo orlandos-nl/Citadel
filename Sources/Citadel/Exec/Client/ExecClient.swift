@@ -29,8 +29,10 @@ final class TTYHandler: ChannelDuplexHandler {
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
-        case is SSHChannelRequestEvent.ExitStatus:
-            ()
+        case let status as SSHChannelRequestEvent.ExitStatus:
+            if status.exitStatus != 0 {
+                done.fail(SSHClient.CommandFailed(exitCode: status.exitStatus))
+            }
         default:
             context.fireUserInboundEventTriggered(event)
         }
