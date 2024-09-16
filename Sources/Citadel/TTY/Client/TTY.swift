@@ -57,9 +57,19 @@ struct EmptySequence<Element>: Sendable, AsyncSequence {
 @available(macOS 15.0, *)
 public struct TTYOutput: AsyncSequence {
     internal let sequence: AsyncThrowingStream<ExecCommandOutput, Error>
+    public typealias Element = ExecCommandOutput
 
-    public func makeAsyncIterator() -> some AsyncIteratorProtocol<ExecCommandOutput, Error> {
-        sequence.makeAsyncIterator()
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        public typealias Element = ExecCommandOutput
+        var iterator: AsyncThrowingStream<ExecCommandOutput, Error>.AsyncIterator
+
+        public mutating func next() async throws -> ExecCommandOutput? {
+            try await iterator.next()
+        }
+    }
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(iterator: sequence.makeAsyncIterator())
     }
 }
 
