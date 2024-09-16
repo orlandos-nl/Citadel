@@ -42,6 +42,34 @@ public enum ExecCommandOutput {
     case stderr(ByteBuffer)
 }
 
+struct EmptySequence<Element>: Sendable, AsyncSequence {
+    struct AsyncIterator: AsyncIteratorProtocol {
+        func next() async throws -> Element? {
+            nil
+        }
+    }
+
+    func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator()
+    }
+}
+
+@available(macOS 15.0, *)
+public struct TTYOutput: AsyncSequence {
+    internal let sequence: AsyncThrowingStream<ExecCommandOutput, Error>
+
+    public func makeAsyncIterator() -> some AsyncIteratorProtocol<ExecCommandOutput, Error> {
+        sequence.makeAsyncIterator()
+    }
+}
+
+public struct TTYStdinWriter {
+    internal let channel: Channel
+
+    public func write(_ buffer: ByteBuffer) async throws {
+        try await channel.writeAndFlush(SSHChannelData(type: .channel, data: .byteBuffer(buffer)))
+    }
+}
 
 final class ExecCommandHandler: ChannelDuplexHandler {
     enum Output {
@@ -126,7 +154,12 @@ extension SSHClient {
     /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
     /// - mergeStreams: If the answer should also include stderr.
     /// - inShell:  Whether to request the remote server to start a shell before executing the command. 
-    public func executeCommand(_ command: String, maxResponseSize: Int = .max, mergeStreams: Bool = false, inShell: Bool = false) async throws -> ByteBuffer {
+    public func executeCommand(
+        _ command: String,
+        maxResponseSize: Int = .max,
+        mergeStreams: Bool = false,
+        inShell: Bool = false
+    ) async throws -> ByteBuffer {
         var result = ByteBuffer()
         let stream = try await executeCommandStream(command, inShell: inShell)
 
@@ -157,11 +190,15 @@ extension SSHClient {
     /// - command: The command to execute.
     /// - inShell:  Whether to request the remote server to start a shell before executing the command.
     public func executeCommandStream(_ command: String, inShell: Bool = false) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
-        var streamContinuation: AsyncThrowingStream<ExecCommandOutput, Error>.Continuation!
-        let stream = AsyncThrowingStream<ExecCommandOutput, Error>(bufferingPolicy: .unbounded) { continuation in
-            streamContinuation = continuation
-        }
-        
+        try await _executeCommandStream(command, inShell: inShell).output
+    }
+
+    internal func _executeCommandStream(
+        _ command: String,
+        inShell: Bool = false
+    ) async throws -> (channel: Channel, output: AsyncThrowingStream<ExecCommandOutput, Error>) {
+        let (stream, streamContinuation) = AsyncThrowingStream<ExecCommandOutput, Error>.makeStream()
+
         var hasReceivedChannelSuccess = false
         var exitCode: Int?
 
@@ -180,9 +217,12 @@ extension SSHClient {
                     streamContinuation.finish()
                 }
             case .channelSuccess:
-                if inShell, !hasReceivedChannelSuccess {
-                    let commandData = SSHChannelData(type: .channel,
-                                                     data: .byteBuffer(ByteBuffer(string: command + ";exit\n")))
+                if inShell,
+                   !hasReceivedChannelSuccess {
+                    let commandData = SSHChannelData(
+                        type: .channel,
+                        data: .byteBuffer(ByteBuffer(string: command + ";exit\n"))
+                    )
                     channel.writeAndFlush(commandData, promise: nil)
                     hasReceivedChannelSuccess = true
                 }
@@ -215,7 +255,29 @@ extension SSHClient {
             ))
         }
         
-        return stream
+        return (channel, stream)
+    }
+
+    @available(macOS 15.0, *)
+    public func withExecutingCommand(
+        _ command: String,
+        inShell: Bool,
+        perform: (_ inbound: TTYOutput, _ outbound: TTYStdinWriter) async throws -> Void
+    ) async throws {
+        let (channel, output) = try await _executeCommandStream(command, inShell: inShell)
+
+        func close() async throws {
+            try await channel.close()
+        }
+
+        do {
+            let inbound = TTYOutput(sequence: output)
+            try await perform(inbound, TTYStdinWriter(channel: channel))
+            try await close()
+        } catch {
+            try await close()
+            throw error
+        }
     }
 
     /// Executes a command on the remote server. This will return the pair of streams stdout and stderr of the command. If the command fails, the error will be thrown.
