@@ -96,6 +96,8 @@ final class SSHClientSession {
     /// - algorithms: The algorithms to use, will use the default algorithms if not specified.
     /// - protocolOptions: The protocol options to use, will use the default options if not specified.
     /// - group: The event loop group to use, will use a new group with one thread if not specified.
+    /// - channelHandlers: Pass in an array of channel prehandlers that execute first. Default empty array
+    /// - connectTimeout: Pass in the time before the connection times out. Default 30 seconds.
     public static func connect(
         host: String,
         port: Int = 22,
@@ -104,6 +106,7 @@ final class SSHClientSession {
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
         group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
+        channelHandlers: [ChannelHandler] = [],
         connectTimeout: TimeAmount = .seconds(30)
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(
@@ -122,7 +125,7 @@ final class SSHClientSession {
         }
         
         let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
-            channel.pipeline.addHandlers([
+            channel.pipeline.addHandlers(channelHandlers + [
                 NIOSSHHandler(
                     role: .client(clientConfiguration),
                     allocator: channel.allocator,
