@@ -301,7 +301,8 @@ final class Citadel2Tests: XCTestCase {
             reconnect: .never
         )
 
-        try await client.withExecutingCommand("cat", inShell: false) { inbound, outbound in
+        try await client.withTTY { inbound, outbound in
+            try await outbound.write(ByteBuffer(string: "cat"))
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
                     var i = UInt8.min

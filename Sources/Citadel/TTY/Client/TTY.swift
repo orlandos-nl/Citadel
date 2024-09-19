@@ -204,7 +204,7 @@ extension SSHClient {
     }
 
     internal func _executeCommandStream(
-        _ command: String,
+        _ command: String?,
         inShell: Bool = false
     ) async throws -> (channel: Channel, output: AsyncThrowingStream<ExecCommandOutput, Error>) {
         let (stream, streamContinuation) = AsyncThrowingStream<ExecCommandOutput, Error>.makeStream()
@@ -227,13 +227,14 @@ extension SSHClient {
                     streamContinuation.finish()
                 }
             case .channelSuccess:
-                if inShell,
-                   !hasReceivedChannelSuccess {
-                    let commandData = SSHChannelData(
-                        type: .channel,
-                        data: .byteBuffer(ByteBuffer(string: command + ";exit\n"))
-                    )
-                    channel.writeAndFlush(commandData, promise: nil)
+                if inShell, !hasReceivedChannelSuccess {
+                    if let command {
+                        let commandData = SSHChannelData(
+                            type: .channel,
+                            data: .byteBuffer(ByteBuffer(string: command + ";exit\n"))
+                        )
+                        channel.writeAndFlush(commandData, promise: nil)
+                    }
                     hasReceivedChannelSuccess = true
                 }
             case .exit(let status):
@@ -258,7 +259,7 @@ extension SSHClient {
             try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
                 wantReply: true
             ))
-        } else {
+        } else if let command {
             try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(
                 command: command,
                 wantReply: true
@@ -269,12 +270,10 @@ extension SSHClient {
     }
 
     @available(macOS 15.0, *)
-    public func withExecutingCommand(
-        _ command: String,
-        inShell: Bool,
+    public func withTTY(
         perform: (_ inbound: TTYOutput, _ outbound: TTYStdinWriter) async throws -> Void
     ) async throws {
-        let (channel, output) = try await _executeCommandStream(command, inShell: inShell)
+        let (channel, output) = try await _executeCommandStream(nil, inShell: true)
 
         func close() async throws {
             try await channel.close()
