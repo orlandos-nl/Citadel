@@ -32,6 +32,10 @@ public final class SFTPClient: Sendable {
         self.responses = responses
         self.logger = logger
     }
+
+    public func close() async throws {
+        try await self.channel.close()
+    }
     
     fileprivate static func setupChannelHanders(channel: Channel, logger: Logger) -> EventLoopFuture<SFTPClient> {
         let responses = SFTPResponses(sftpVersion: channel.eventLoop.makePromise())
@@ -287,6 +291,34 @@ public final class SFTPClient: Sendable {
 }
 
 extension SSHClient {
+    /// Open a SFTP subchannel over the SSH connection using the `sftp` subsystem.
+    ///
+    /// - Parameters:
+    ///   - logger: A logger to use for logging SFTP operations. Creates a new logger by default. See below for details.
+    ///   - closure: A closure to execute with the opened SFTP client. The client is automatically closed when the  
+    ///     closure returns.
+    ///
+    /// ## Logging levels
+    ///
+    /// Several events in the lifetime of an SFTP connection are logged to the provided logger at various levels:
+    /// - `.critical`, `.error`: Unused.
+    /// - `.warning`: Logs non-`ok` SFTP status responses and SSH-level errors.
+    /// - `.info`: Logs major interesting events in the SFTP connection lifecycle (opened, closed, etc.)
+    /// - `.debug`: Logs detailed connection events (opened file, read from file, wrote to file, etc.)
+    /// - `.trace`: Logs a protocol-level packet trace, including raw packet bytes (excluding large items such
+    ///   as incoming data read from a file). Care is taken to ensure sensitive information is not included in
+    ///   packet traces.
+    public func withSFTP<ReturnType>(
+        logger: Logger = .init(label: "nl.orlandos.citadel.sftp"),
+        _ closure: @escaping @Sendable (SFTPClient) async throws -> ReturnType
+    ) async throws -> ReturnType {
+        let client = try await self.openSFTP(logger: logger)
+        defer {
+            try? client.close()
+        }
+        return try await closure(client)
+    }
+    
     /// Open a SFTP subchannel over the SSH connection using the `sftp` subsystem.
     ///
     /// - Parameters:
