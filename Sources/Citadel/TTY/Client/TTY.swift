@@ -210,8 +210,13 @@ extension SSHClient {
     /// - Parameters:
     /// - command: The command to execute.
     /// - inShell:  Whether to request the remote server to start a shell before executing the command.
-    public func executeCommandStream(_ command: String, inShell: Bool = false) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
+    public func executeCommandStream(
+        _ command: String,
+        environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
+        inShell: Bool = false
+    ) async throws -> AsyncThrowingStream<ExecCommandOutput, Error> {
         try await _executeCommandStream(
+            environment: environment,
             mode: inShell ? .tty(command: command) : .command(command)
         ).output
     }
@@ -221,6 +226,7 @@ extension SSHClient {
     }
 
     internal func _executeCommandStream(
+        environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
         mode: CommandMode
     ) async throws -> (channel: Channel, output: AsyncThrowingStream<ExecCommandOutput, Error>) {
         let (stream, streamContinuation) = AsyncThrowingStream<ExecCommandOutput, Error>.makeStream()
@@ -269,6 +275,10 @@ extension SSHClient {
             return createChannel.futureResult
         }.get()
 
+        for env in environment {
+            try await channel.triggerUserOutboundEvent(env)
+        }
+
         switch mode {
         case .pty(let request):
             try await channel.triggerUserOutboundEvent(request)
@@ -290,9 +300,13 @@ extension SSHClient {
     @available(macOS 15.0, *)
     public func withPTY(
         _ request: SSHChannelRequestEvent.PseudoTerminalRequest,
+        environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
         perform: (_ inbound: TTYOutput, _ outbound: TTYStdinWriter) async throws -> Void
     ) async throws {
-        let (channel, output) = try await _executeCommandStream(mode: .pty(request))
+        let (channel, output) = try await _executeCommandStream(
+            environment: environment,
+            mode: .pty(request)
+        )
 
         func close() async throws {
             try await channel.close()
@@ -310,9 +324,13 @@ extension SSHClient {
 
     @available(macOS 15.0, *)
     public func withTTY(
+        environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
         perform: (_ inbound: TTYOutput, _ outbound: TTYStdinWriter) async throws -> Void
     ) async throws {
-        let (channel, output) = try await _executeCommandStream(mode: .tty(command: nil))
+        let (channel, output) = try await _executeCommandStream(
+            environment: environment,
+            mode: .tty(command: nil)
+        )
 
         func close() async throws {
             try await channel.close()
