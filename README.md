@@ -98,6 +98,10 @@ To begin with SFTP, you must instantiate an SFTPClient based on your SSHClient:
 // Open an SFTP session on the SSH client
 let sftp = try await client.openSFTP()
 
+// Get the current working directory
+let cwd = try await sftp.getRealPath(atPath: ".")
+//Obtain the real path of the directory eg "/opt/vulscan/.. -> /opt"
+let truePath = try await sftp.getRealPath(atPath: "/opt/vulscan/..")
 // List the contents of the /etc directory
 let directoryContents = try await sftp.listDirectory(atPath: "/etc")
 
