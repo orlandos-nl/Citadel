@@ -1,0 +1,606 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		247A3D692CDB320A003B8A01 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 247A3D682CDB320A003B8A01 /* SwiftTerm */; };
+		247A3D6F2CDB3AD2003B8A01 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 247A3D6E2CDB3AD2003B8A01 /* Citadel */; };
+		24B73C512CDE8A0C00310BEA /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 24B73C502CDE8A0C00310BEA /* Citadel */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		247A3D482CDB31C1003B8A01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 247A3D2E2CDB31BF003B8A01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 247A3D352CDB31BF003B8A01;
+			remoteInfo = CitadelCLI;
+		};
+		247A3D522CDB31C1003B8A01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 247A3D2E2CDB31BF003B8A01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 247A3D352CDB31BF003B8A01;
+			remoteInfo = CitadelCLI;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		247A3D362CDB31BF003B8A01 /* CitadelCLI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CitadelCLI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		247A3D472CDB31C1003B8A01 /* CitadelCLITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CitadelCLITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		247A3D512CDB31C1003B8A01 /* CitadelCLIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CitadelCLIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		247A3D382CDB31BF003B8A01 /* CitadelCLI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CitadelCLI;
+			sourceTree = "<group>";
+		};
+		247A3D4A2CDB31C1003B8A01 /* CitadelCLITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CitadelCLITests;
+			sourceTree = "<group>";
+		};
+		247A3D542CDB31C1003B8A01 /* CitadelCLIUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CitadelCLIUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		247A3D332CDB31BF003B8A01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				24B73C512CDE8A0C00310BEA /* Citadel in Frameworks */,
+				247A3D692CDB320A003B8A01 /* SwiftTerm in Frameworks */,
+				247A3D6F2CDB3AD2003B8A01 /* Citadel in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		247A3D442CDB31C1003B8A01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		247A3D4E2CDB31C1003B8A01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		247A3D2D2CDB31BF003B8A01 = {
+			isa = PBXGroup;
+			children = (
+				247A3D382CDB31BF003B8A01 /* CitadelCLI */,
+				247A3D4A2CDB31C1003B8A01 /* CitadelCLITests */,
+				247A3D542CDB31C1003B8A01 /* CitadelCLIUITests */,
+				247A3D372CDB31BF003B8A01 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		247A3D372CDB31BF003B8A01 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				247A3D362CDB31BF003B8A01 /* CitadelCLI.app */,
+				247A3D472CDB31C1003B8A01 /* CitadelCLITests.xctest */,
+				247A3D512CDB31C1003B8A01 /* CitadelCLIUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		247A3D352CDB31BF003B8A01 /* CitadelCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 247A3D5B2CDB31C1003B8A01 /* Build configuration list for PBXNativeTarget "CitadelCLI" */;
+			buildPhases = (
+				247A3D322CDB31BF003B8A01 /* Sources */,
+				247A3D332CDB31BF003B8A01 /* Frameworks */,
+				247A3D342CDB31BF003B8A01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				247A3D382CDB31BF003B8A01 /* CitadelCLI */,
+			);
+			name = CitadelCLI;
+			packageProductDependencies = (
+				247A3D682CDB320A003B8A01 /* SwiftTerm */,
+				247A3D6E2CDB3AD2003B8A01 /* Citadel */,
+				24B73C502CDE8A0C00310BEA /* Citadel */,
+			);
+			productName = CitadelCLI;
+			productReference = 247A3D362CDB31BF003B8A01 /* CitadelCLI.app */;
+			productType = "com.apple.product-type.application";
+		};
+		247A3D462CDB31C1003B8A01 /* CitadelCLITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 247A3D5E2CDB31C1003B8A01 /* Build configuration list for PBXNativeTarget "CitadelCLITests" */;
+			buildPhases = (
+				247A3D432CDB31C1003B8A01 /* Sources */,
+				247A3D442CDB31C1003B8A01 /* Frameworks */,
+				247A3D452CDB31C1003B8A01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				247A3D492CDB31C1003B8A01 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				247A3D4A2CDB31C1003B8A01 /* CitadelCLITests */,
+			);
+			name = CitadelCLITests;
+			packageProductDependencies = (
+			);
+			productName = CitadelCLITests;
+			productReference = 247A3D472CDB31C1003B8A01 /* CitadelCLITests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		247A3D502CDB31C1003B8A01 /* CitadelCLIUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 247A3D612CDB31C1003B8A01 /* Build configuration list for PBXNativeTarget "CitadelCLIUITests" */;
+			buildPhases = (
+				247A3D4D2CDB31C1003B8A01 /* Sources */,
+				247A3D4E2CDB31C1003B8A01 /* Frameworks */,
+				247A3D4F2CDB31C1003B8A01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				247A3D532CDB31C1003B8A01 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				247A3D542CDB31C1003B8A01 /* CitadelCLIUITests */,
+			);
+			name = CitadelCLIUITests;
+			packageProductDependencies = (
+			);
+			productName = CitadelCLIUITests;
+			productReference = 247A3D512CDB31C1003B8A01 /* CitadelCLIUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		247A3D2E2CDB31BF003B8A01 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					247A3D352CDB31BF003B8A01 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					247A3D462CDB31C1003B8A01 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 247A3D352CDB31BF003B8A01;
+					};
+					247A3D502CDB31C1003B8A01 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 247A3D352CDB31BF003B8A01;
+					};
+				};
+			};
+			buildConfigurationList = 247A3D312CDB31BF003B8A01 /* Build configuration list for PBXProject "CitadelCLI" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 247A3D2D2CDB31BF003B8A01;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				247A3D672CDB320A003B8A01 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				24B73C4F2CDE8A0C00310BEA /* XCRemoteSwiftPackageReference "Citadel" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 247A3D372CDB31BF003B8A01 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				247A3D352CDB31BF003B8A01 /* CitadelCLI */,
+				247A3D462CDB31C1003B8A01 /* CitadelCLITests */,
+				247A3D502CDB31C1003B8A01 /* CitadelCLIUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		247A3D342CDB31BF003B8A01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		247A3D452CDB31C1003B8A01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		247A3D4F2CDB31C1003B8A01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		247A3D322CDB31BF003B8A01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		247A3D432CDB31C1003B8A01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		247A3D4D2CDB31C1003B8A01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		247A3D492CDB31C1003B8A01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 247A3D352CDB31BF003B8A01 /* CitadelCLI */;
+			targetProxy = 247A3D482CDB31C1003B8A01 /* PBXContainerItemProxy */;
+		};
+		247A3D532CDB31C1003B8A01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 247A3D352CDB31BF003B8A01 /* CitadelCLI */;
+			targetProxy = 247A3D522CDB31C1003B8A01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		247A3D592CDB31C1003B8A01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		247A3D5A2CDB31C1003B8A01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		247A3D5C2CDB31C1003B8A01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CitadelCLI/CitadelCLI.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CitadelCLI/Preview Content\"";
+				DEVELOPMENT_TEAM = 6U5LP2533T;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = software.unbeatable.CitadelCLI;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		247A3D5D2CDB31C1003B8A01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CitadelCLI/CitadelCLI.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CitadelCLI/Preview Content\"";
+				DEVELOPMENT_TEAM = 6U5LP2533T;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = software.unbeatable.CitadelCLI;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		247A3D5F2CDB31C1003B8A01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6U5LP2533T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = software.unbeatable.CitadelCLITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CitadelCLI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CitadelCLI";
+			};
+			name = Debug;
+		};
+		247A3D602CDB31C1003B8A01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6U5LP2533T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = software.unbeatable.CitadelCLITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CitadelCLI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CitadelCLI";
+			};
+			name = Release;
+		};
+		247A3D622CDB31C1003B8A01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6U5LP2533T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = software.unbeatable.CitadelCLIUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = CitadelCLI;
+			};
+			name = Debug;
+		};
+		247A3D632CDB31C1003B8A01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6U5LP2533T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = software.unbeatable.CitadelCLIUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = CitadelCLI;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		247A3D312CDB31BF003B8A01 /* Build configuration list for PBXProject "CitadelCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				247A3D592CDB31C1003B8A01 /* Debug */,
+				247A3D5A2CDB31C1003B8A01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		247A3D5B2CDB31C1003B8A01 /* Build configuration list for PBXNativeTarget "CitadelCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				247A3D5C2CDB31C1003B8A01 /* Debug */,
+				247A3D5D2CDB31C1003B8A01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		247A3D5E2CDB31C1003B8A01 /* Build configuration list for PBXNativeTarget "CitadelCLITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				247A3D5F2CDB31C1003B8A01 /* Debug */,
+				247A3D602CDB31C1003B8A01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		247A3D612CDB31C1003B8A01 /* Build configuration list for PBXNativeTarget "CitadelCLIUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				247A3D622CDB31C1003B8A01 /* Debug */,
+				247A3D632CDB31C1003B8A01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		247A3D672CDB320A003B8A01 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.5;
+			};
+		};
+		24B73C4F2CDE8A0C00310BEA /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		247A3D682CDB320A003B8A01 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 247A3D672CDB320A003B8A01 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		247A3D6E2CDB3AD2003B8A01 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Citadel;
+		};
+		24B73C502CDE8A0C00310BEA /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 24B73C4F2CDE8A0C00310BEA /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 247A3D2E2CDB31BF003B8A01 /* Project object */;
+}
