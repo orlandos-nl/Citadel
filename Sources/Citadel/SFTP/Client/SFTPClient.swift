@@ -284,6 +284,15 @@ public final class SFTPClient: Sendable {
         self.logger.debug("SFTP renamed file at \(oldPath) to \(newPath)")
     }
 
+    // Obtain the real path of the directory eg "/opt/vulscan/.. -> /opt" and Pass in ". "on initialization You can get the current working directory
+    public func getRealPath(atPath path: String) async throws -> String {
+        guard case let .name(realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
+            self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+        return realpath.path
+    }
+
 }
 
 extension SSHClient {
