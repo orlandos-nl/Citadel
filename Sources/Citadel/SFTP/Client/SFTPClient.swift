@@ -322,10 +322,14 @@ extension SSHClient {
         _ closure: @escaping @Sendable (SFTPClient) async throws -> ReturnType
     ) async throws -> ReturnType {
         let client = try await self.openSFTP(logger: logger)
-        defer {
-            try? client.close()
+        do {
+            let result = try await closure(client)
+            try await client.close()
+            return result
+        } catch {
+            try await client.close()
+            throw error
         }
-        return try await closure(client)
     }
     
     /// Open a SFTP subchannel over the SSH connection using the `sftp` subsystem.
