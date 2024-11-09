@@ -323,7 +323,9 @@ extension SSHClient {
     ) async throws -> ReturnType {
         let client = try await self.openSFTP(logger: logger)
         defer {
-            try? client.close()
+            Task { @MainActor in
+                try? await client.close()
+            }
         }
         return try await closure(client)
     }
