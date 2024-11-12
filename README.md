@@ -88,7 +88,7 @@ while let blob = try await asyncStreams.next() {
 }
 ```
 
-Citadel currently  expose APIs for streaming into a process' `stdin`. only  withPTY and withYTY.
+Citadel currently  expose APIs for streaming into a process' `stdin`. only  withPTY and withTTY.
 
 An example of how pty model can be used:
 
