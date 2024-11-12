@@ -80,13 +80,13 @@ public struct TTYStdinWriter {
         try await channel.writeAndFlush(SSHChannelData(type: .channel, data: .byteBuffer(buffer)))
     }
 
-    public func changeSize(cols: Int, rows: Int) async throws {
+    public func changeSize(cols: Int, rows: Int, pixelWidth:Int, pixelHeight:Int) async throws {
         try await channel.triggerUserOutboundEvent(
             SSHChannelRequestEvent.WindowChangeRequest(
-                terminalCharacterWidth: 0,
-                terminalRowHeight: 0,
-                terminalPixelWidth: 0,
-                terminalPixelHeight: 0
+                terminalCharacterWidth: cols,
+                terminalRowHeight: rows,
+                terminalPixelWidth: pixelWidth,
+                terminalPixelHeight: pixelHeight
             )
         )
     }
