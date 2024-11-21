@@ -76,15 +76,15 @@ extension Curve25519.Signing.PrivateKey: OpenSSHPrivateKey {
     }
 }
 
-extension Insecure.RSA.PublicKey: ByteBufferConvertible {
+extension RSA.PublicKey: ByteBufferConvertible {
     func write(to buffer: inout ByteBuffer) {
         let _: Int = self.write(to: &buffer)
     }
 }
 
-extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
-    typealias PublicKey = Insecure.RSA.PublicKey
-    
+extension RSA.PrivateKey: OpenSSHPrivateKey {
+    typealias PublicKey = RSA<Group, Hash>.PublicKey
+
     static var publicKeyPrefix: String { "ssh-rsa" }
     static var privateKeyPrefix: String { "ssh-rsa" }
     static var keyType: OpenSSH.KeyType { .sshRSA }
@@ -106,8 +106,8 @@ extension Insecure.RSA.PrivateKey: OpenSSHPrivateKey {
     ///  - key: The OpenSSH private key string.
     /// - decryptionKey: The key to decrypt the private key with, if any.
     public convenience init(sshRsa key: String, decryptionKey: Data? = nil) throws {
-        let privateKey = try OpenSSH.PrivateKey<Insecure.RSA.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
-        let publicKey = privateKey.publicKey as! Insecure.RSA.PublicKey
+        let privateKey = try OpenSSH.PrivateKey<RSA<Group, Hash>.PrivateKey>.init(string: key, decryptionKey: decryptionKey).privateKey
+        let publicKey = privateKey.publicKey as! RSA<Group, Hash>.PublicKey
         
         // Copy, so that our values stored in `privateKey` aren't freed when exciting the initializers scope
         let modulus = CCryptoBoringSSL_BN_new()!

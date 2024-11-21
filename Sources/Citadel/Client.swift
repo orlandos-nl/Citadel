@@ -101,7 +101,12 @@ public struct SSHAlgorithms {
         ])
 
         algorithms.publicKeyAlgorihtms = .add([
-            (Insecure.RSA.PublicKey.self, Insecure.RSA.Signature.self),
+//            (Insecure.RSA<DiffieHellman.Group1, Insecure.SHA1>.PublicKey.self, Insecure.RSA<DiffieHellman.Group1, Insecure.SHA1>.Signature.self),
+            (RSA<DiffieHellman.Group14, Insecure.SHA1>.PublicKey.self, RSA<DiffieHellman.Group14, Insecure.SHA1>.Signature.self),
+//            (Insecure.RSA<DiffieHellman.Group1, SHA256>.PublicKey.self, Insecure.RSA<DiffieHellman.Group1, SHA256>.Signature.self),
+            (RSA<DiffieHellman.Group14, SHA256>.PublicKey.self, RSA<DiffieHellman.Group14, SHA256>.Signature.self),
+//            (Insecure.RSA<DiffieHellman.Group1, SHA512>.PublicKey.self, Insecure.RSA<DiffieHellman.Group1, SHA512>.Signature.self),
+            (RSA<DiffieHellman.Group14, SHA512>.PublicKey.self, RSA<DiffieHellman.Group14, SHA512>.Signature.self),
         ])
 
         return algorithms

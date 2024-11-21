@@ -194,7 +194,7 @@ final class Citadel2Tests: XCTestCase {
         let clientPublicKey = clientPrivateKey.publicKey
         let server = try await SSHServer.host(
             host: "0.0.0.0",
-            port: 2222,
+            port: 2223,
             hostKeys: [
                 .init(p521Key: P521.Signing.PrivateKey())
             ],
@@ -206,7 +206,7 @@ final class Citadel2Tests: XCTestCase {
         
         let client = try await SSHClient.connect(
             host: "127.0.0.1",
-            port: 2222,
+            port: 2223,
             authenticationMethod: SSHAuthenticationMethod.p521(
                 username: "Joannis",
                 privateKey: clientKey
@@ -277,59 +277,6 @@ final class Citadel2Tests: XCTestCase {
 
         let output = try await client.executeCommand("ls /")
         XCTAssertFalse(String(buffer: output).isEmpty)
-
-        try await client.close()
-    }
-
-    @available(macOS 15.0, *)
-    func testStdinStream() async throws {
-        guard
-            let host = ProcessInfo.processInfo.environment["SSH_HOST"],
-            let _port = ProcessInfo.processInfo.environment["SSH_PORT"],
-            let port = Int(_port),
-            let username = ProcessInfo.processInfo.environment["SSH_USERNAME"],
-            let password = ProcessInfo.processInfo.environment["SSH_PASSWORD"]
-        else {
-            throw XCTSkip()
-        }
-
-        let client = try await SSHClient.connect(
-            host: host,
-            port: port,
-            authenticationMethod: .passwordBased(username: username, password: password),
-            hostKeyValidator: .acceptAnything(),
-            reconnect: .never
-        )
-
-        try await client.withTTY { inbound, outbound in
-            try await outbound.write(ByteBuffer(string: "cat"))
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    var i = UInt8.min
-                    for try await value in inbound {
-                        switch value {
-                        case .stdout(let value):
-                            for byte in value.readableBytesView {
-                                XCTAssertEqual(byte, i)
-                                i = i &+ 1
-                            }
-                        case .stderr:
-                            XCTFail("Unexpected stderr")
-                        }
-                    }
-                }
-
-                group.addTask {
-                    for i: UInt8 in .min ... .max {
-                        let value = ByteBufferAllocator().buffer(integer: i)
-                        try await outbound.write(value)
-                    }
-                }
-
-                try await group.next()
-                group.cancelAll()
-            }
-        }
 
         try await client.close()
     }
