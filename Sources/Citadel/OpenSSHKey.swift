@@ -22,7 +22,7 @@ protocol OpenSSHPrivateKey: ByteBufferConvertible {
     associatedtype PublicKey: ByteBufferConvertible
 }
 
-extension Insecure.RSA.PrivateKey: ByteBufferConvertible {
+extension RSA.PrivateKey: ByteBufferConvertible {
     static func read(consuming buffer: inout ByteBuffer) throws -> Self {
         guard
             let nBytesLength = buffer.readInteger(as: UInt32.self),
