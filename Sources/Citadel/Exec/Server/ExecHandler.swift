@@ -19,10 +19,14 @@ import NIOFoundationCompat
 import NIOPosix
 import NIOSSH
 
-#if os(Linux)
-import Glibc
-#else
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#elseif canImport(Bionic)
+import Bionic
 #endif
 
 enum SSHServerError: Error {
