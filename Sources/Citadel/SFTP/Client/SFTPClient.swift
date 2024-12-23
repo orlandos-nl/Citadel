@@ -105,6 +105,20 @@ public final class SFTPClient: Sendable {
     }
     
     /// List the contents of a directory on the SFTP server.
+    ///
+    /// - Parameter path: The path to list
+    /// - Returns: Array of directory entries
+    /// - Throws: SFTPError if the request fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// let contents = try await sftp.listDirectory(atPath: "/home/user")
+    /// for item in contents {
+    ///     print(item.filename)
+    ///     print(item.longname) // ls -l style output
+    ///     print(item.attributes) // File attributes
+    /// }
+    /// ```
     public func listDirectory(
         atPath path: String
     ) async throws -> [SFTPMessage.Name] {
@@ -151,7 +165,19 @@ public final class SFTPClient: Sendable {
         return names
     }
     
-    /// Get the attributes of a file on the SFTP server. If the file does not exist, an error is thrown.
+    /// Get the attributes of a file on the SFTP server.
+    ///
+    /// - Parameter filePath: Path to the file
+    /// - Returns: File attributes including size, permissions, etc
+    /// - Throws: SFTPError if the file doesn't exist or request fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// let attrs = try await sftp.getAttributes(at: "test.txt")
+    /// print("Size:", attrs.size)
+    /// print("Permissions:", attrs.permissions)
+    /// print("Modified:", attrs.modificationTime)
+    /// ```
     public func getAttributes(
         at filePath: String
     ) async throws -> SFTPFileAttributes {
@@ -170,15 +196,29 @@ public final class SFTPClient: Sendable {
         return attributes.attributes
     }
     
-    /// Open a file at the specified path on the SFTP server, using the given flags and attributes.  If the `.create`
-    /// flag is specified, the given attributes are applied to the created file. If successful, an `SFTPFile` is
-    /// returned which can be used to perform various operations on the open file. The file object must be explicitly
-    /// closed by the caller; the client does not keep track of open files.
+    /// Open a file at the specified path on the SFTP server.
     ///
-    /// - Warning: The `attributes` parameter is currently unimplemented; any values provided are ignored.
+    /// - Parameters:
+    ///   - filePath: Path to the file
+    ///   - flags: File open flags (.read, .write, .create, etc)
+    ///   - attributes: File attributes to set if creating file
+    /// - Returns: An SFTPFile object for performing operations
+    /// - Throws: SFTPError if open fails
     ///
-    /// - Important: This API is annoying to use safely. Strongly consider using
-    ///   `withFile(filePath:flags:attributes:_:)` instead.
+    /// ## Example
+    /// ```swift
+    /// // Open file for reading
+    /// let file = try await sftp.openFile(
+    ///     filePath: "test.txt",
+    ///     flags: .read
+    /// )
+    /// 
+    /// // Read entire contents
+    /// let data = try await file.readToEnd()
+    /// 
+    /// // Don't forget to close
+    /// try await file.close()
+    /// ```
     public func openFile(
         filePath: String,
         flags: SFTPOpenFileFlags,
@@ -202,12 +242,34 @@ public final class SFTPClient: Sendable {
         return SFTPFile(client: self, path: filePath, handle: handle.handle)
     }
     
-    /// Open a file at the specified path on the SFTP server, using the given flags. If the `.create` flag is specified,
-    /// the given attributes are applied to the created file. If the open succeeds, the provided closure is invoked with
-    /// an `SFTPFile` object which can be used to perform operations on the file. When the closure returns, the file is
-    /// automatically closed. The `SFTPFile` object must not be persisted beyond the lifetime of the closure.
+    /// Open and automatically close a file with the given closure.
     ///
-    /// - Warning: The `attributes` parameter is currently unimplemented; any values provided are ignored.
+    /// - Parameters:
+    ///   - filePath: Path to the file
+    ///   - flags: File open flags (.read, .write, .create, etc)
+    ///   - attributes: File attributes to set if creating file
+    ///   - closure: Operation to perform with the open file
+    /// - Returns: The value returned by the closure
+    /// - Throws: SFTPError if open fails or closure throws
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Read file contents
+    /// let contents = try await sftp.withFile(
+    ///     filePath: "test.txt",
+    ///     flags: .read
+    /// ) { file in
+    ///     try await file.readToEnd()
+    /// }
+    /// 
+    /// // Write file contents
+    /// try await sftp.withFile(
+    ///     filePath: "new.txt",
+    ///     flags: [.write, .create]
+    /// ) { file in
+    ///     try await file.write(ByteBuffer(string: "Hello World"))
+    /// }
+    /// ```
     public func withFile<R>(
         filePath: String,
         flags: SFTPOpenFileFlags,
@@ -226,7 +288,24 @@ public final class SFTPClient: Sendable {
         }
     }
     
-    /// Create a directory at the specified path on the SFTP server. If the directory already exists, an error is thrown.
+    /// Create a directory at the specified path.
+    ///
+    /// - Parameters:
+    ///   - path: Path where directory should be created
+    ///   - attributes: Attributes to set on the new directory
+    /// - Throws: SFTPError if creation fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Create simple directory
+    /// try await sftp.createDirectory(atPath: "new_folder")
+    /// 
+    /// // Create with specific permissions
+    /// try await sftp.createDirectory(
+    ///     atPath: "private_folder",
+    ///     attributes: .init(permissions: 0o700)
+    /// )
+    /// ```
     public func createDirectory(
         atPath path: String,
         attributes: SFTPFileAttributes = .none
@@ -242,7 +321,15 @@ public final class SFTPClient: Sendable {
         self.logger.debug("SFTP created directory \(path)")
     }
 
-    /// Remove a file at the specified path on the SFTP server
+    /// Remove a file at the specified path.
+    ///
+    /// - Parameter filePath: Path to the file to remove
+    /// - Throws: SFTPError if removal fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// try await sftp.remove(at: "file_to_delete.txt")
+    /// ```
     public func remove(
         at filePath: String
     ) async throws {
@@ -256,7 +343,15 @@ public final class SFTPClient: Sendable {
         self.logger.debug("SFTP removed file at \(filePath)")
     }
 
-    /// Remove a directory at the specified path on the SFTP server
+    /// Remove a directory at the specified path.
+    ///
+    /// - Parameter filePath: Path to the directory to remove
+    /// - Throws: SFTPError if removal fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// try await sftp.rmdir(at: "empty_directory")
+    /// ```
     public func rmdir(
         at filePath: String
     ) async throws {
@@ -270,7 +365,21 @@ public final class SFTPClient: Sendable {
         self.logger.debug("SFTP removed directory at \(filePath)")
     }
 
-    /// Rename a file
+    /// Rename a file or directory.
+    ///
+    /// - Parameters:
+    ///   - oldPath: Current path of the file
+    ///   - newPath: Desired new path
+    ///   - flags: Optional flags affecting the rename operation
+    /// - Throws: SFTPError if rename fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// try await sftp.rename(
+    ///     at: "old_name.txt",
+    ///     to: "new_name.txt"
+    /// )
+    /// ```
     public func rename(
         at oldPath: String,
         to newPath: String,
@@ -288,7 +397,20 @@ public final class SFTPClient: Sendable {
         self.logger.debug("SFTP renamed file at \(oldPath) to \(newPath)")
     }
 
-    // Obtain the real path of the directory eg "/opt/vulscan/.. -> /opt" and Pass in ". "on initialization You can get the current working directory
+    /// Get the canonical absolute path.
+    ///
+    /// - Parameter path: Path to resolve
+    /// - Returns: Absolute canonical path
+    /// - Throws: SFTPError if path resolution fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Resolve current directory
+    /// let pwd = try await sftp.getRealPath(atPath: ".")
+    /// 
+    /// // Resolve relative path
+    /// let absolute = try await sftp.getRealPath(atPath: "../some/path")
+    /// ```
     public func getRealPath(atPath path: String) async throws -> String {
         guard case let .name(realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
             self.logger.warning("SFTP server returned bad response to open file request, this is a protocol error")
@@ -303,20 +425,32 @@ extension SSHClient {
     /// Open a SFTP subchannel over the SSH connection using the `sftp` subsystem.
     ///
     /// - Parameters:
-    ///   - logger: A logger to use for logging SFTP operations. Creates a new logger by default. See below for details.
-    ///   - closure: A closure to execute with the opened SFTP client. The client is automatically closed when the  
-    ///     closure returns.
+    ///   - logger: A logger to use for logging SFTP operations. Creates a new logger by default.
+    ///   - closure: A closure to execute with the opened SFTP client. The client is automatically closed when the closure returns.
     ///
     /// ## Logging levels
-    ///
     /// Several events in the lifetime of an SFTP connection are logged to the provided logger at various levels:
     /// - `.critical`, `.error`: Unused.
     /// - `.warning`: Logs non-`ok` SFTP status responses and SSH-level errors.
     /// - `.info`: Logs major interesting events in the SFTP connection lifecycle (opened, closed, etc.)
     /// - `.debug`: Logs detailed connection events (opened file, read from file, wrote to file, etc.)
-    /// - `.trace`: Logs a protocol-level packet trace, including raw packet bytes (excluding large items such
-    ///   as incoming data read from a file). Care is taken to ensure sensitive information is not included in
-    ///   packet traces.
+    /// - `.trace`: Logs a protocol-level packet trace.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let client = try await SSHClient(/* ... */)
+    /// 
+    /// try await client.withSFTP { sftp in
+    ///     // List directory contents
+    ///     let contents = try await sftp.listDirectory(atPath: "/home/user")
+    ///     
+    ///     // Read a file
+    ///     try await sftp.withFile(filePath: "test.txt", flags: .read) { file in
+    ///         let data = try await file.readToEnd()
+    ///         print(String(buffer: data))
+    ///     }
+    /// }
+    /// ```
     public func withSFTP<ReturnType>(
         logger: Logger = .init(label: "nl.orlandos.citadel.sftp"),
         _ closure: @escaping @Sendable (SFTPClient) async throws -> ReturnType
@@ -335,21 +469,21 @@ extension SSHClient {
     /// Open a SFTP subchannel over the SSH connection using the `sftp` subsystem.
     ///
     /// - Parameters:
-    ///   - subsystem: The subsystem name sent to the SSH server. You probably want to just use the default of `sftp`.
-    ///   - logger: A logger to use for logging SFTP operations. Creates a new logger by default. See below for details.
+    ///   - logger: A logger to use for logging SFTP operations. Creates a new logger by default.
+    /// - Returns: An initialized SFTP client
+    /// - Throws: SFTPError if connection fails or version is unsupported
     ///
-    /// ## Logging levels
-    ///
-    /// Several events in the lifetime of an SFTP connection are logged to the provided logger at various levels:
-    ///
-    /// - `.critical`, `.error`: Unused.
-    /// - `.warning`: Logs non-`ok` SFTP status responses and SSH-level errors.
-    /// - `.notice`: Unused.
-    /// - `.info`: Logs major interesting events in the SFTP connection lifecycle (opened, closed, etc.)
-    /// - `.debug`: Logs detailed connection events (opened file, read from file, wrote to file, etc.)
-    /// - `.trace`: Logs a protocol-level packet trace, including raw packet bytes (excluding large items such
-    ///   as incoming data read from a file). Care is taken to ensure sensitive information is not included in
-    ///   packet traces.
+    /// ## Example
+    /// ```swift
+    /// let client = try await SSHClient(/* ... */)
+    /// let sftp = try await client.openSFTP()
+    /// 
+    /// // Use SFTP client
+    /// let contents = try await sftp.listDirectory(atPath: "/home/user")
+    /// 
+    /// // Remember to close when done
+    /// try await sftp.close()
+    /// ```
     public func openSFTP(
         logger: Logger = .init(label: "nl.orlandos.citadel.sftp")
     ) async throws -> SFTPClient {

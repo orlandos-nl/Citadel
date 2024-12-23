@@ -21,25 +21,6 @@ let client = try await SSHClient.connect(
 
 Using that client, we support a couple types of operations:
 
-### TCP-IP Forwarding (Proxying)
-
-```swift
-// The address that is presented as the locally exposed interface
-// This is purely communicated to the SSH server
-let address = try SocketAddress(ipAddress: "fe80::1", port: 27017)
-let configuredProxyChannel = try await client.createDirectTCPIPChannel(
-    using: SSHChannelType.DirectTCPIP(
-        targetHost: "localhost", // MongoDB host 
-        targetPort: 27017, // MongoDB port
-        originatorAddress: address
-    )
-) { proxyChannel in
-  proxyChannel.pipeline.addHandlers(...)
-}
-```
-
-This will create a channel that is connected to the SSH server, and then forwarded to the target host. This is useful for proxying TCP-IP connections, such as MongoDB, Redis, MySQL, etc.
-
 ### Executing Commands
 
 You can execute a command through SSH using the following code:
@@ -76,14 +57,13 @@ An example of how executeCommandStream can be used:
 
 ```swift
 let streams = try await client.executeCommandStream("cat /foo/bar.log")
-var asyncStreams = streams.makeAsyncIterator()
 
-while let blob = try await asyncStreams.next() {
-    switch blob {
-        case .stdout(let stdout):
-            // do something with stdout
-        case .stderr(let stderr):
-            // do something with stderr
+for try await event in streams {
+    switch event {
+    case .stdout(let stdout):
+        // do something with stdout
+    case .stderr(let stderr):
+        // do something with stderr
     }
 }
 ```
@@ -130,25 +110,15 @@ let directoryContents = try await sftp.listDirectory(atPath: "/etc")
 // Create a directory
 try await sftp.createDirectory(atPath: "/etc/custom-folder")
 
-// Open a file
-let resolv = try await sftp.openFile(filePath: "/etc/resolv.conf", flags: .read)
+// Write to a file (using a helper that cleans up the file automatically)
+try await sftp.withFile(
+    filePath: "/etc/resolv.conf",
+    flags: [.read, .write, .forceCreate]
+) { file in
+    try await file.write(ByteBuffer(string: "Hello, world", at: 0))
+}
 
-// Read a file in bulk
-let resolvContents: ByteBuffer = try await resolv.readAll()
-
-// Read a file in chunks
-let chunk: ByteBuffer = try await resolv.read(from: index, length: maximumByteCount)
-
-// Close a file
-try await resolv.close()
-
-// Write to a file
-let file = try await sftp.openFile(filePath: "/etc/resolv.conf", flags: [.read, .write, .forceCreate])
-let fileWriterIndex = 0
-try await file.write(ByteBuffer(string: "Hello, world", at: fileWriterIndex)
-try await file.close()
-
-// Read a file using a helper. This closes the file automatically
+// Read a file
 let data = try await sftp.withFile(
     filePath: "/etc/resolv.conf",
     flags: .read
@@ -159,6 +129,25 @@ let data = try await sftp.withFile(
 // Close the SFTP session
 try await sftp.close()
 ```
+
+### TCP-IP Forwarding (Proxying)
+
+```swift
+// The address that is presented as the locally exposed interface
+// This is purely communicated to the SSH server
+let address = try SocketAddress(ipAddress: "fe80::1", port: 27017)
+let configuredProxyChannel = try await client.createDirectTCPIPChannel(
+    using: SSHChannelType.DirectTCPIP(
+        targetHost: "localhost", // MongoDB host 
+        targetPort: 27017, // MongoDB port
+        originatorAddress: address
+    )
+) { proxyChannel in
+  proxyChannel.pipeline.addHandlers(...)
+}
+```
+
+This will create a channel that is connected to the SSH server, and then forwarded to the target host. This is useful for proxying TCP-IP connections, such as MongoDB, Redis, MySQL, etc.
 
 ## Servers
 
@@ -303,7 +292,7 @@ public final class MyExecDelegate: ExecDelegate {
 }
 ```
 
-### SFTP Server
+### SFTP Servers
 
 When you implement SFTP in Citadel, you're responsible for taking care of logistics. Be it through a backing MongoDB store, a real filesystem, or your S3 bucket.
 
@@ -358,7 +347,6 @@ You can also use `SSHAlgorithms.all` to enable all supported algorithms.
 A couple of code is held back until further work in SwiftNIO SSH is completed. We're currently working with Apple to resolve these.
 
 - [ ] RSA Authentication (implemented & supported, but in a [fork of NIOSSH](https://github.com/Joannis/swift-nio-ssh-1/pull/1))
-- [ ] Much more documentation & tutorials
 
 ## Contributing
 

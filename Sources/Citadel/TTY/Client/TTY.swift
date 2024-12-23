@@ -3,12 +3,17 @@ import Logging
 import NIO
 import NIOSSH
 
+/// Represents an error that occurred while processing TTY standard error output
 public struct TTYSTDError: Error {
+    /// The error message as a raw byte buffer
     public let message: ByteBuffer
 }
 
+/// A pair of streams representing the stdout and stderr output of an executed command
 public struct ExecCommandStream {
+    /// An async stream of bytes representing the standard output
     public let stdout: AsyncThrowingStream<ByteBuffer, Error>
+    /// An async stream of bytes representing the standard error
     public let stderr: AsyncThrowingStream<ByteBuffer, Error>
     
     struct Continuation {
@@ -37,23 +42,15 @@ public struct ExecCommandStream {
     }
 }
 
+/// Represents the output from an executed command, either stdout or stderr data
 public enum ExecCommandOutput {
+    /// Standard output data as a byte buffer
     case stdout(ByteBuffer)
+    /// Standard error data as a byte buffer 
     case stderr(ByteBuffer)
 }
 
-struct EmptySequence<Element>: Sendable, AsyncSequence {
-    struct AsyncIterator: AsyncIteratorProtocol {
-        func next() async throws -> Element? {
-            nil
-        }
-    }
-
-    func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator()
-    }
-}
-
+/// An async sequence that provides TTY output data
 @available(macOS 15.0, *)
 public struct TTYOutput: AsyncSequence {
     internal let sequence: AsyncThrowingStream<ExecCommandOutput, Error>
@@ -73,9 +70,12 @@ public struct TTYOutput: AsyncSequence {
     }
 }
 
+/// Allows writing data to a TTY's standard input and controlling terminal properties
 public struct TTYStdinWriter {
     internal let channel: Channel
 
+    /// Write raw bytes to the TTY's standard input
+    /// - Parameter buffer: The bytes to write
     public func write(_ buffer: ByteBuffer) async throws {
         try await channel.writeAndFlush(SSHChannelData(type: .channel, data: .byteBuffer(buffer)))
     }
@@ -119,6 +119,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     
     func handlerAdded(context: ChannelHandlerContext) {
         context.channel.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).whenFailure { error in
+            self.logger.debug("Failed to set allowRemoteHalfClosure: \(error)")
             context.fireErrorCaught(error)
         }
     }
@@ -132,6 +133,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
         case let status as SSHChannelRequestEvent.ExitStatus:
             onOutput(context.channel, .exit(status.exitStatus))
         default:
+            self.logger.debug("Received unknown channel event in command handler: \(event)")
             context.fireUserInboundEventTriggered(event)
         }
     }
@@ -154,6 +156,7 @@ final class ExecCommandHandler: ChannelDuplexHandler {
         case .stdErr:
             onOutput(context.channel, .stderr(buffer))
         default:
+            self.logger.debug("Received channel data not known by Citadel")
             // We don't know this std channel
             ()
         }
@@ -165,16 +168,35 @@ final class ExecCommandHandler: ChannelDuplexHandler {
 }
 
 extension SSHClient {
+    /// Error thrown when a command exits with a non-zero status code
     public struct CommandFailed: Error {
+        /// The exit code returned by the command
         public let exitCode: Int
     }
 
-    /// Executes a command on the remote server. This will return the output of the command (stdout). If the command fails, the error will be thrown. If the output is too large, the command will fail.
+    /// Executes a command on the remote server and returns its output as a single buffer
     /// - Parameters:
-    /// - command: The command to execute.
-    /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
-    /// - mergeStreams: If the answer should also include stderr.
-    /// - inShell:  Whether to request the remote server to start a shell before executing the command. 
+    ///   - command: The command to execute on the remote server
+    ///   - maxResponseSize: Maximum allowed size of the combined output in bytes. Defaults to Int.max
+    ///   - mergeStreams: Whether to include stderr output in the result. Defaults to false
+    ///   - inShell: Whether to execute the command within a shell context. Defaults to false
+    /// - Returns: A ByteBuffer containing the command's output
+    /// - Throws: CitadelError.commandOutputTooLarge if output exceeds maxResponseSize
+    ///          CommandFailed if the command exits with non-zero status
+    /// 
+    /// ## Example
+    /// ```swift
+    /// // Simple command execution
+    /// let output = try await client.executeCommand("ls -la")
+    /// print(String(buffer: output))
+    /// 
+    /// // Execute with merged stderr and limited output size
+    /// let result = try await client.executeCommand(
+    ///     "find /",
+    ///     maxResponseSize: 1024 * 1024, // 1MB max
+    ///     mergeStreams: true
+    /// )
+    /// ```
     public func executeCommand(
         _ command: String,
         maxResponseSize: Int = .max,
@@ -188,6 +210,7 @@ extension SSHClient {
             switch chunk {
             case .stderr(let chunk):
                 guard mergeStreams else {
+                    logger.debug("Error data received, but ignored because `mergeStreams` is disabled")
                     continue
                 }
 
@@ -206,10 +229,27 @@ extension SSHClient {
         return result
     }
 
-    /// Executes a command on the remote server. This will return the output stream of the command. If the command fails, the error will be thrown.
+    /// Executes a command on the remote server and returns a stream of its output
     /// - Parameters:
-    /// - command: The command to execute.
-    /// - inShell:  Whether to request the remote server to start a shell before executing the command.
+    ///   - command: The command to execute on the remote server
+    ///   - environment: Array of environment variables to set for the command
+    ///   - inShell: Whether to execute the command within a shell context. Defaults to false
+    /// - Returns: An async stream that yields command output as it becomes available
+    /// - Throws: CommandFailed if the command exits with non-zero status
+    /// 
+    /// ## Example
+    /// ```swift
+    /// // Stream command output as it arrives
+    /// let stream = try await client.executeCommandStream("tail -f /var/log/system.log")
+    /// for try await output in stream {
+    ///     switch output {
+    ///     case .stdout(let buffer):
+    ///         print("stdout:", String(buffer: buffer))
+    ///     case .stderr(let buffer):
+    ///         print("stderr:", String(buffer: buffer))
+    ///     }
+    /// }
+    /// ```
     public func executeCommandStream(
         _ command: String,
         environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
@@ -241,6 +281,7 @@ extension SSHClient {
             case .stderr(let stderr):
                 streamContinuation.yield(.stderr(stderr))
             case .eof(let error):
+                self.logger.debug("EOF triggered, ending the command stream.")
                 if let error {
                     streamContinuation.finish(throwing: error)
                 } else if let exitCode, exitCode != 0 {
@@ -258,6 +299,7 @@ extension SSHClient {
                     hasReceivedChannelSuccess = true
                 }
             case .exit(let status):
+                self.logger.debug("Process exited with status code \(status). Will await on EOF for correct exit")
                 exitCode = status
             }
         }
@@ -297,6 +339,12 @@ extension SSHClient {
         return (channel, stream)
     }
 
+    /// Creates a pseudo-terminal (PTY) session and executes the provided closure with input/output streams
+    /// - Parameters:
+    ///   - request: PTY configuration parameters
+    ///   - environment: Array of environment variables to set for the PTY session
+    ///   - perform: Closure that receives TTY input/output streams and performs terminal operations
+    /// - Throws: Any errors that occur during PTY setup or operation
     @available(macOS 15.0, *)
     public func withPTY(
         _ request: SSHChannelRequestEvent.PseudoTerminalRequest,
@@ -322,6 +370,31 @@ extension SSHClient {
         }
     }
 
+    /// Creates a TTY session and executes the provided closure with input/output streams
+    /// 
+    /// - Parameters:
+    ///   - environment: Array of environment variables to set for the TTY session
+    ///   - perform: Closure that receives TTY input/output streams and performs terminal operations
+    /// - Throws: Any errors that occur during TTY setup or operation
+    /// 
+    /// ## Example
+    /// ```swift
+    /// // Create an interactive shell session
+    /// try await client.withTTY { inbound, outbound in
+    ///     // Send commands
+    ///     try await outbound.write(ByteBuffer(string: "echo $PATH\n"))
+    ///     
+    ///     // Process output
+    ///     for try await output in inbound {
+    ///         switch output {
+    ///         case .stdout(let buffer):
+    ///             print(String(buffer: buffer))
+    ///         case .stderr(let buffer):
+    ///             print("Error:", String(buffer: buffer))
+    ///         }
+    ///     }
+    /// }
+    /// ```
     @available(macOS 15.0, *)
     public func withTTY(
         environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
@@ -346,9 +419,34 @@ extension SSHClient {
         }
     }
 
-    /// Executes a command on the remote server. This will return the pair of streams stdout and stderr of the command. If the command fails, the error will be thrown.
+    /// Executes a command and returns separate stdout and stderr streams
+    /// 
+    /// Example:
+    /// ```swift
+    /// let client = try await SSHClient(/* ... */)
+    /// 
+    /// // Execute a command with separate stdout/stderr handling
+    /// let streams = try await client.executeCommandPair("make")
+    /// 
+    /// // Handle stdout
+    /// Task {
+    ///     for try await output in streams.stdout {
+    ///         print("stdout:", String(buffer: output))
+    ///     }
+    /// }
+    /// 
+    /// // Handle stderr
+    /// Task {
+    ///     for try await error in streams.stderr {
+    ///         print("stderr:", String(buffer: error))
+    ///     }
+    /// }
+    /// ```
     /// - Parameters:
-    /// - command: The command to execute.
+    ///   - command: The command to execute on the remote server
+    ///   - inShell: Whether to execute the command within a shell context. Defaults to false
+    /// - Returns: An ExecCommandStream containing separate stdout and stderr streams
+    /// - Throws: CommandFailed if the command exits with non-zero status
     public func executeCommandPair(_ command: String, inShell: Bool = false) async throws -> ExecCommandStream {
         var stdoutContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
         var stderrContinuation: AsyncThrowingStream<ByteBuffer, Error>.Continuation!
