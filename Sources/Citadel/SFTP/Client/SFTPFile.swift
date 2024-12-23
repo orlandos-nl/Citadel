@@ -46,6 +46,19 @@ public final class SFTPFile {
     }
     
     /// Read the attributes of the file. This is equivalent to the `stat()` system call.
+    ///
+    /// - Returns: File attributes including size, permissions, etc
+    /// - Throws: SFTPError if the file handle is invalid or request fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// let file = try await sftp.withFile(filePath: "test.txt", flags: .read) { file in
+    ///     let attrs = try await file.readAttributes()
+    ///     print("File size:", attrs.size ?? 0)
+    ///     print("Modified:", attrs.modificationTime)
+    ///     print("Permissions:", String(format: "%o", attrs.permissions))
+    /// }
+    /// ```
     public func readAttributes() async throws -> SFTPFileAttributes {
         guard self.isActive else { throw SFTPError.fileHandleInvalid }
         
@@ -60,16 +73,27 @@ public final class SFTPFile {
         return attributes.attributes
     }
     
-    /// Read up to the given number of bytes from the file, starting at the given byte offset. If the offset
-    /// is past the last byte of the file, an error will be returned. The offset is a 64-bit quantity, but
-    /// no more than `UInt32.max` bytes may be read in a single chunk.
+    /// Read up to the given number of bytes from the file, starting at the given byte offset.
     ///
-    /// - Note: Calling the method with no parameters will result in a buffer of up to 4GB worth of data. To
-    ///   retreive the full contents of larger files, see `readAll()` below.
+    /// - Parameters:
+    ///   - offset: Starting position in the file (defaults to 0)
+    ///   - length: Maximum number of bytes to read (defaults to UInt32.max)
+    /// - Returns: ByteBuffer containing the read data
+    /// - Throws: SFTPError if the file handle is invalid or read fails
     ///
-    /// - Warning: The contents of large files will end up fully buffered in memory. It is strongly recommended
-    ///   that callers provide a relatively small `length` value and stream the contents to their destination in
-    ///   chunks rather than trying to gather it all at once.
+    /// ## Example
+    /// ```swift
+    /// let file = try await sftp.withFile(filePath: "test.txt", flags: .read) { file in
+    ///     // Read first 1024 bytes
+    ///     let start = try await file.read(from: 0, length: 1024)
+    /// 
+    ///     // Read next 1024 bytes
+    ///     let middle = try await file.read(from: 1024, length: 1024)
+    /// 
+    ///     // Read remaining bytes (up to 4GB)
+    ///     let rest = try await file.read(from: 2048)
+    /// }
+    /// ```
     public func read(from offset: UInt64 = 0, length: UInt32 = .max) async throws -> ByteBuffer {
         guard self.isActive else { throw SFTPError.fileHandleInvalid }
 
@@ -90,12 +114,24 @@ public final class SFTPFile {
         }
     }
     
-    /// Read all bytes in the file into a single in-memory buffer. Reads are done in chunks of up to 4GB each.
-    /// For files below that size, use `file.read()` instead. If an error is encountered during any of the
-    /// chunk reads, it cancels all remaining reads and discards the buffer.
+    /// Read all bytes in the file into a single in-memory buffer.
     ///
-    /// - Tip: This method is overkill unless you expect to be working with very large files. You may
-    ///   want to make sure the host of said code has plenty of spare RAM.
+    /// - Returns: ByteBuffer containing the entire file contents
+    /// - Throws: SFTPError if the file handle is invalid or read fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// try await sftp.withFile(filePath: "test.txt", flags: .read) { file in
+    ///     // Read entire file
+    ///     let contents = try await file.readAll()
+    ///     print("File size:", contents.readableBytes)
+    /// 
+    ///     // Convert to string if text file
+    ///     if let text = String(buffer: contents) {
+    ///         print("Contents:", text)
+    ///     }
+    /// }
+    /// ```
     public func readAll() async throws -> ByteBuffer {
         let attributes = try await self.readAttributes()
         
@@ -131,9 +167,33 @@ public final class SFTPFile {
         return buffer
     }
     
-    /// Write the given data to the file, starting at the provided offset. If the offset is past the current end of the
-    /// file, the behavior is server-dependent, but it is safest to assume that this is not permitted. The offset is
-    /// ignored if the file was opened with the `.append` flag.
+    /// Write data to the file at the specified offset.
+    ///
+    /// - Parameters:
+    ///   - data: ByteBuffer containing the data to write
+    ///   - offset: Position in file to start writing (defaults to 0)
+    /// - Throws: SFTPError if the file handle is invalid or write fails
+    ///
+    /// ## Example
+    /// ```swift
+    /// try await sftp.withFile(
+    ///     filePath: "test.txt",
+    ///     flags: [.write, .create]
+    /// ) { file in
+    ///     // Write string data
+    ///     try await file.write(ByteBuffer(string: "Hello World\n"))
+    /// 
+    ///     // Append more data
+    ///     let moreData = ByteBuffer(string: "More content")
+    ///     try await file.write(moreData, at: 12) // After newline
+    /// 
+    ///     // Write large data in chunks
+    ///     let chunk1 = ByteBuffer(string: "First chunk")
+    ///     let chunk2 = ByteBuffer(string: "Second chunk")
+    ///     try await file.write(chunk1, at: 0)
+    ///     try await file.write(chunk2, at: UInt64(chunk1.readableBytes))
+    /// }
+    /// ```
     public func write(_ data: ByteBuffer, at offset: UInt64 = 0) async throws -> Void {
         guard self.isActive else { throw SFTPError.fileHandleInvalid }
         
@@ -160,12 +220,9 @@ public final class SFTPFile {
         self.logger.debug("SFTP finished writing \(data.readerIndex) bytes @ \(offset) to file \(self.handle.sftpHandleDebugDescription)")
     }
 
-    /// Close the file. No further operations may take place on the file after it is closed. A file _must_ be closed
-    /// before the last reference to it goes away.
+    /// Close the file handle.
     ///
-    /// - Note: Files are automatically closed if the SFTP channel is shut down, but it is strongly recommended that
-    ///  callers explicitly close the file anyway, as multiple close operations are idempotent. The "close before
-    ///  deinit" requirement is enforced in debug builds by an assertion; violations are ignored in release builds.
+    /// - Throws: SFTPError if close fails
     public func close() async throws -> Void {
         guard self.isActive else {
             // Don't blow up if close is called on an invalid handle; it's too easy for it to happen by accident.

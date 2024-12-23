@@ -2,16 +2,24 @@ import Foundation
 import NIO
 import NIOSSH
 
+/// A channel handler that manages TTY (terminal) input/output for SSH command execution.
+/// This handler processes both incoming and outgoing data through the SSH channel.
 final class TTYHandler: ChannelDuplexHandler {
     typealias InboundIn = SSHChannelData
     typealias InboundOut = ByteBuffer
     typealias OutboundIn = ByteBuffer
     typealias OutboundOut = SSHChannelData
 
+    /// Maximum allowed size for command response data
     let maxResponseSize: Int
+    /// Flag to indicate if input should be ignored (e.g., when response size exceeds limit)
     var isIgnoringInput = false
+    /// Buffer to store the command's response data
     var response = ByteBuffer()
+    /// Promise that will be fulfilled with the final response
     let done: EventLoopPromise<ByteBuffer>
+    /// Buffer to store error messages from stderr
+    private var errorBuffer = ByteBuffer()
     
     init(
         maxResponseSize: Int,
@@ -39,7 +47,11 @@ final class TTYHandler: ChannelDuplexHandler {
     }
 
     func handlerRemoved(context: ChannelHandlerContext) {
-        done.succeed(response)
+        if errorBuffer.readableBytes > 0 {
+            done.fail(TTYSTDError(message: errorBuffer))
+        } else {
+            done.succeed(response)
+        }
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -63,7 +75,7 @@ final class TTYHandler: ChannelDuplexHandler {
             response.writeBuffer(&bytes)
             return
         case .stdErr:
-            done.fail(TTYSTDError(message: bytes))
+            errorBuffer.writeBuffer(&bytes)
         default:
             ()
         }
@@ -76,10 +88,24 @@ final class TTYHandler: ChannelDuplexHandler {
 }
 
 extension SSHClient {
-    /// Executes a command on the remote server. This will return the output of the command. If the command fails, the error will be thrown. If the output is too large, the command will fail.
+    /// Executes a command on the remote SSH server and returns its output.
+    ///
+    /// This method establishes a new channel, executes the specified command, and collects
+    /// its output. The command execution is handled asynchronously and includes timeout protection
+    /// for channel creation.
+    ///
     /// - Parameters:
-    ///  - command: The command to execute.
-    /// - maxResponseSize: The maximum size of the response. If the response is larger, the command will fail.
+    ///   - command: The shell command to execute on the remote server
+    ///   - maxResponseSize: Maximum allowed size for the command's output in bytes. 
+    ///                     If exceeded, throws `CitadelError.commandOutputTooLarge`
+    ///
+    /// - Returns: A ByteBuffer containing the command's output
+    ///
+    /// - Throws:
+    ///   - `CitadelError.channelCreationFailed` if the channel cannot be created within 15 seconds
+    ///   - `CitadelError.commandOutputTooLarge` if the response exceeds maxResponseSize
+    ///   - `SSHClient.CommandFailed` if the command returns a non-zero exit status
+    ///   - `TTYSTDError` if there was output to stderr
     public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
