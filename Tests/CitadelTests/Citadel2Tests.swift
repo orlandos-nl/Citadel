@@ -333,4 +333,78 @@ final class Citadel2Tests: XCTestCase {
 
         try await client.close()
     }
+    
+    func testEnvCommandStreamToOpenSSHServer() async throws {
+        guard
+            let host = ProcessInfo.processInfo.environment["SSH_HOST"] else {
+            throw XCTSkip("MISSING ENVIRONMENT VARIABLES - SSH_HOST")
+        }
+        guard
+            let _port = ProcessInfo.processInfo.environment["SSH_PORT"],
+            let port = Int(_port) else {
+            throw XCTSkip("MISSING ENVIRONMENT VARIABLES - SSH_PORT")
+        }
+        guard
+            let username = ProcessInfo.processInfo.environment["SSH_USERNAME"] else {
+            throw XCTSkip("MISSING ENVIRONMENT VARIABLES - SSH_USERNAME")
+        }
+        guard
+            let password = ProcessInfo.processInfo.environment["SSH_PASSWORD"] else {
+            throw XCTSkip("MISSING ENVIRONMENT VARIABLES - SSH_PASSWORD")
+        }
+        
+        let client = try await SSHClient.connect(
+            host: host,
+            port: port,
+            authenticationMethod: .passwordBased(username: username, password: password),
+            hostKeyValidator: .acceptAnything(),
+            reconnect: .never
+        )
+
+        // example CLI command to run docker openSSH client locally:    
+        // docker run -d -p 2222:2222 -e USER_NAME=citadel -e USER_PASSWORD=hunter2 -e PASSWORD_ACCESS=true lscr.io/linuxserver/openssh-server:latest
+        
+        // Q(heckj): What does it mean to "wantReply" with an environmentRequest?
+        let env: SSHChannelRequestEvent.EnvironmentRequest = .init(wantReply: false, name: "FOO", value: "bar")
+        let outputStreams = try await client.executeCommandStream("env", environment: [env], inShell: true)
+
+        var accumulateStdOut: ByteBuffer = .init()
+        var accumulateStdErr: ByteBuffer = .init()
+        for try await event in outputStreams {
+            switch event {
+            case .stdout(let stdout):
+                // do something with stdout
+                accumulateStdOut.writeBytes(stdout.readableBytesView)
+            case .stderr(let stderr):
+                // do something with stderr
+                accumulateStdErr.writeBytes(stderr.readableBytesView)
+            }
+        }
+
+        // exemplar output
+        // print("STDOUT: \(String(buffer: accumulateStdOut))")
+        
+        //STDOUT: SHELL=/bin/bash
+        //PWD=/config
+        //LOGNAME=citadel
+        //HOME=/config
+        //SSH_CONNECTION=192.168.215.1 59350 192.168.215.2 2222
+        //USER=citadel
+        //SHLVL=1
+        //SSH_CLIENT=192.168.215.1 59350 2222
+        //PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        //MAIL=/var/mail/citadel
+        //_=/usr/bin/env
+        
+        let multilineString = String(buffer: accumulateStdOut)
+        XCTAssertTrue(multilineString.contains("USER=citadel"))
+        XCTAssertTrue(multilineString.contains("SHELL=/bin/bash"))
+        XCTAssertTrue(multilineString.contains("FOO=bar"))
+        
+        // print("STDERR: \(String(buffer: accumulateStdErr))")
+        XCTAssertTrue(String(buffer: accumulateStdErr).isEmpty)
+
+        try await client.close()
+    }
+
 }
