@@ -313,8 +313,8 @@ final class Citadel2Tests: XCTestCase {
                                 XCTAssertEqual(byte, i)
                                 i = i &+ 1
                             }
-                        case .stderr:
-                            XCTFail("Unexpected stderr")
+                        case .stderr(let value):
+                            XCTFail("Unexpected stderr: \(String(buffer: value))")
                         }
                     }
                 }
