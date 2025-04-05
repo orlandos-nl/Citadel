@@ -185,6 +185,25 @@ public final class SSHClient {
             protocolOptions: settings.protocolOptions
         )
     }
+
+    public func jump(to settings: SSHClientSettings) async throws -> SSHClient {
+        let originatorAddress = try SocketAddress(ipAddress: "fe80::1", port: 22)
+        let channel = try await self.createDirectTCPIPChannel(
+            using: SSHChannelType.DirectTCPIP(
+                targetHost: settings.host,
+                targetPort: settings.port,
+                originatorAddress: originatorAddress
+            )
+        ) { channel in
+            // TODO: Add handlers here instead
+            return channel.eventLoop.makeSucceededVoidFuture()
+        }
+
+        return try await SSHClient.connect(
+            on: channel,
+            settings: settings
+        )
+    }
     
     /// Connects to an SSH server.
     /// - Parameters:
