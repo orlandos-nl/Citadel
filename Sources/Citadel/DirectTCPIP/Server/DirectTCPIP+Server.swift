@@ -16,7 +16,7 @@ fileprivate final class ProxyChannelHandler: ChannelOutboundHandler {
     }
 }
 
-public protocol DirectTCPIPDelegate {
+public protocol DirectTCPIPDelegate: Sendable {
     func initializeDirectTCPIPChannel(_ channel: Channel, request: SSHChannelType.DirectTCPIP, context: SSHContext) -> EventLoopFuture<Void>
 }
 

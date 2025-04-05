@@ -487,10 +487,10 @@ extension SSHClient {
     public func openSFTP(
         logger: Logger = .init(label: "nl.orlandos.citadel.sftp")
     ) async throws -> SFTPClient {
-        try await eventLoop.flatSubmit {
-            let createChannel = self.eventLoop.makePromise(of: Channel.self)
-            let createClient = self.eventLoop.makePromise(of: SFTPClient.self)
-            let timeoutCheck = self.eventLoop.makePromise(of: Void.self)
+        try await eventLoop.flatSubmit { [eventLoop] in
+            let createChannel = eventLoop.makePromise(of: Channel.self)
+            let createClient = eventLoop.makePromise(of: SFTPClient.self)
+            let timeoutCheck = eventLoop.makePromise(of: Void.self)
             
             self.session.sshHandler.createChannel(createChannel) { channel, _ in
                 SFTPClient.setupChannelHanders(channel: channel, logger: logger)
@@ -551,14 +551,18 @@ extension SSHClient {
 }
 
 /// A tracker for in-flight SFTP requests. Request IDs are allocated by `SFTPClient`.
-final class SFTPResponses: @unchecked Sendable {
+final class SFTPResponses: Sendable {
     let _initialized: NIOLockedValueBox<Bool> = NIOLockedValueBox<Bool>(false)
     var isInitialized: Bool {
         get { _initialized.withLockedValue { $0 } }
         set { _initialized.withLockedValue { $0 = newValue } }
     }
     let sftpVersion: EventLoopPromise<SFTPMessage.Version>
-    var responses = [UInt32: EventLoopPromise<SFTPResponse>]()
+    let _responses = NIOLockedValueBox<[UInt32: EventLoopPromise<SFTPResponse>]>([:])
+    var responses: [UInt32: EventLoopPromise<SFTPResponse>] {
+        get { _responses.withLockedValue { $0 } }
+        set { _responses.withLockedValue { $0 = newValue } }
+    }
     
     init(sftpVersion: EventLoopPromise<SFTPMessage.Version>) {
         self.sftpVersion = sftpVersion

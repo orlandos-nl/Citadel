@@ -56,12 +56,12 @@ extension SSHAlgorithms.Modification<(NIOSSHPublicKeyProtocol.Type, NIOSSHSignat
     }
 }
 
-public struct SSHAlgorithms {
+public struct SSHAlgorithms: Sendable {
     /// Represents a modification to a list of items.
     ///
     /// - replace: Replaces the existing list of items with the given list of items.
     /// - add: Adds the given list of items to the list of items.
-    public enum Modification<T> {
+    public enum Modification<T: Sendable>: Sendable {
         case replace(with: [T])
         case add([T])
     }

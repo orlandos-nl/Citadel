@@ -23,7 +23,7 @@ public struct InvokeCommandContext: Sendable {
     public let arguments: [String]
 }
 
-public protocol ShellCommand {
+public protocol ShellCommand: Sendable {
     var name: String { get }
     var description: String { get }
     

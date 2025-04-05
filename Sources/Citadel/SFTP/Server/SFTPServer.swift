@@ -52,7 +52,7 @@ public struct SSHShellContext {
 }
 
 /// The delegate for the SFTP subsystem. This is the interface that the SFTP subsystem uses to interact with the rest of the application. The delegate is responsible for implementing the various SFTP operations.
-public protocol SFTPDelegate {
+public protocol SFTPDelegate: Sendable {
     /// Returns the attributes for the file at the given path. This is equivalent to the `stat()` system call.
     func fileAttributes(atPath path: String, context: SSHContext) async throws -> SFTPFileAttributes
 

@@ -44,7 +44,7 @@ public final class ExecOutputHandler {
     }
 }
 
-public protocol ExecDelegate: AnyObject {
+public protocol ExecDelegate: AnyObject, Sendable {
     func start(command: String, outputHandler: ExecOutputHandler) async throws -> ExecCommandContext
     func setEnvironmentValue(_ value: String, forKey key: String) async throws
 }

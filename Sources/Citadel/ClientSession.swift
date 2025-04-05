@@ -2,7 +2,7 @@ import NIO
 import NIOSSH
 import Logging
 
-final class ClientHandshakeHandler: ChannelInboundHandler {
+final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Any
 
     private let promise: EventLoopPromise<Void>
@@ -151,7 +151,7 @@ final class SSHClientSession {
 public struct InvalidHostKey: Error, Equatable {}
 
 /// A host key validator that can be used to validate an SSH host key. This can be used to validate the host key against a set of trusted keys, or to accept any key.
-public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
+public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, Sendable {
     private enum Method {
         case trustedKeys(Set<NIOSSHPublicKey>)
         case acceptAnything

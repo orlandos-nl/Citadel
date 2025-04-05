@@ -1,7 +1,7 @@
 import NIO
 import Foundation
 
-public struct SFTPPathComponent {
+public struct SFTPPathComponent: Sendable {
     public let filename: String
     public let longname: String
     public let attributes: SFTPFileAttributes
@@ -13,7 +13,7 @@ public struct SFTPPathComponent {
     }
 }
 
-public struct SFTPFileListing {
+public struct SFTPFileListing: Sendable {
     public let path: [SFTPPathComponent]
     
     public init(path: [SFTPPathComponent]) {
@@ -21,7 +21,7 @@ public struct SFTPFileListing {
     }
 }
 
-enum SFTPRequest: CustomDebugStringConvertible {
+enum SFTPRequest: CustomDebugStringConvertible, Sendable {
     case openFile(SFTPMessage.OpenFile)
     case closeFile(SFTPMessage.CloseFile)
     case read(SFTPMessage.ReadFile)
@@ -119,7 +119,7 @@ enum SFTPRequest: CustomDebugStringConvertible {
     }
 }
 
-enum SFTPResponse {
+enum SFTPResponse: Sendable {
     case handle(SFTPMessage.Handle)
     case status(SFTPMessage.Status)
     case data(SFTPMessage.FileData)
@@ -203,8 +203,8 @@ extension SFTPMessageContent {
     fileprivate var debugVariantWithoutLargeData: Self { self }
 }
 
-public enum SFTPMessage {
-    public struct Initialize: SFTPMessageContent {
+public enum SFTPMessage: Sendable {
+    public struct Initialize: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.initialize
         
         public let version: SFTPProtocolVersion
@@ -213,7 +213,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Version: SFTPMessageContent {
+    public struct Version: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.version
         
         public let version: SFTPProtocolVersion
@@ -223,7 +223,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct OpenFile: SFTPMessageContent {
+    public struct OpenFile: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.openFile
         
         public var requestId: UInt32
@@ -238,7 +238,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct CloseFile: SFTPMessageContent {
+    public struct CloseFile: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.closeFile
         
         public var requestId: UInt32
@@ -248,7 +248,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct ReadFile: SFTPMessageContent {
+    public struct ReadFile: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.read
         
         public var requestId: UInt32
@@ -260,7 +260,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct WriteFile: SFTPMessageContent {
+    public struct WriteFile: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.write
         
         public var requestId: UInt32
@@ -272,7 +272,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { .init(requestId: self.requestId, handle: self.handle, offset: self.offset, data: .init()) }
     }
     
-    public struct Status: Error, SFTPMessageContent {
+    public struct Status: Error, SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.status
         
         public let requestId: UInt32
@@ -285,7 +285,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Handle: SFTPMessageContent {
+    public struct Handle: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.handle
         
         public let requestId: UInt32
@@ -295,7 +295,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct FileStat: SFTPMessageContent {
+    public struct FileStat: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.fstat
         
         public let requestId: UInt32
@@ -305,7 +305,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Remove: SFTPMessageContent {
+    public struct Remove: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.remove
         
         public let requestId: UInt32
@@ -315,7 +315,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct FileSetStat: SFTPMessageContent {
+    public struct FileSetStat: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.fsetstat
         
         public let requestId: UInt32
@@ -326,7 +326,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct SetStat: SFTPMessageContent {
+    public struct SetStat: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.setstat
         
         public let requestId: UInt32
@@ -337,7 +337,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
 
-    public struct Rename: SFTPMessageContent {
+    public struct Rename: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.rename
 
         public let requestId: UInt32
@@ -349,7 +349,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
 
-    public struct Symlink: SFTPMessageContent {
+    public struct Symlink: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.symlink
         
         public let requestId: UInt32
@@ -360,7 +360,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Readlink: SFTPMessageContent {
+    public struct Readlink: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.readlink
         
         public let requestId: UInt32
@@ -370,7 +370,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct FileData: SFTPMessageContent {
+    public struct FileData: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.data
         
         public let requestId: UInt32
@@ -380,7 +380,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { .init(requestId: self.requestId, data: .init()) }
     }
     
-    public struct MkDir: SFTPMessageContent {
+    public struct MkDir: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.mkdir
         
         public let requestId: UInt32
@@ -393,7 +393,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct RmDir: SFTPMessageContent {
+    public struct RmDir: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.rmdir
         
         public let requestId: UInt32
@@ -405,7 +405,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct OpenDir: SFTPMessageContent {
+    public struct OpenDir: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.opendir
         
         public let requestId: UInt32
@@ -417,7 +417,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Stat: SFTPMessageContent {
+    public struct Stat: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.stat
         
         public let requestId: UInt32
@@ -428,7 +428,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct LStat: SFTPMessageContent {
+    public struct LStat: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.lstat
         
         public let requestId: UInt32
@@ -439,7 +439,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct RealPath: SFTPMessageContent {
+    public struct RealPath: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.realpath
         
         public let requestId: UInt32
@@ -450,7 +450,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Name: SFTPMessageContent {
+    public struct Name: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.name
         
         public let requestId: UInt32
@@ -466,7 +466,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct Attributes: SFTPMessageContent {
+    public struct Attributes: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.attributes
         
         public let requestId: UInt32
@@ -477,7 +477,7 @@ public enum SFTPMessage {
         fileprivate var debugVariantWithoutLargeData: Self { self }
     }
     
-    public struct ReadDir: SFTPMessageContent {
+    public struct ReadDir: SFTPMessageContent, Sendable {
         public static let id = SFTPMessageType.readdir
         
         public let requestId: UInt32

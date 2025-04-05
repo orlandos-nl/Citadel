@@ -101,7 +101,7 @@ public enum SFTPMessageType: UInt8 {
     }
 }
 
-public enum SFTPStatusCode: RawRepresentable, Hashable, CustomDebugStringConvertible {
+public enum SFTPStatusCode: RawRepresentable, Hashable, CustomDebugStringConvertible, Sendable {
     case ok
     case eof
     case noSuchFile

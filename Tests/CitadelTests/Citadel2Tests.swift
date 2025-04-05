@@ -91,7 +91,7 @@ final class Citadel2Tests: XCTestCase {
             case unsupported
         }
         
-        final class TestData {
+        final class TestData: @unchecked /* for testing */ Sendable {
             var allDataSent = ByteBuffer()
         }
         
