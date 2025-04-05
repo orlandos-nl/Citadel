@@ -20,6 +20,7 @@ jobs:
                     USER_NAME: citadel
                     USER_PASSWORD: hunter2
                     PASSWORD_ACCESS: true
+                    DOCKER_MODS: linuxserver/mods:openssh-server-ssh-tunnel
         runs-on: ubuntu-latest
         container: 
           image: swift:5.10-jammy
