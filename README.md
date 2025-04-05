@@ -42,7 +42,7 @@ The `executeCommandPair` function or `executeCommandStream` function can be used
 An example of how executeCommandPair can be used:
 
 ```swift
-let streams = try await client.executeCommandPair("cat /foo/bar.log")
+let answer = try await client.executeCommandPair("cat /foo/bar.log")
 
 for try await blob in answer.stdout {
     // do something with blob
