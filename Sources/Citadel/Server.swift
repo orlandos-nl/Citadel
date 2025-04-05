@@ -1,6 +1,7 @@
 import NIO
 import Logging
-import NIOSSH
+@preconcurrency import NIOSSH
+import NIOConcurrencyHelpers
 
 final class CloseErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Any
@@ -123,13 +124,28 @@ final class SubsystemHandler: ChannelDuplexHandler {
     }
 }
 
-final class CitadelServerDelegate {
-    var sftp: SFTPDelegate?
-    var exec: ExecDelegate?
-    var shell: ShellDelegate?
-    var directTCPIP: DirectTCPIPDelegate?
-    
-    fileprivate init() {}
+final class CitadelServerDelegate: Sendable {
+    let _sftp = NIOLockedValueBox<SFTPDelegate?>(nil)
+    let _exec = NIOLockedValueBox<ExecDelegate?>(nil)
+    let _shell = NIOLockedValueBox<ShellDelegate?>(nil)
+    let _directTCPIP = NIOLockedValueBox<DirectTCPIPDelegate?>(nil)
+
+    var sftp: SFTPDelegate? {
+        get { _sftp.withLockedValue { $0 } }
+        set { _sftp.withLockedValue { $0 = newValue } }
+    }
+    var exec: ExecDelegate? {
+        get { _exec.withLockedValue { $0 } }
+        set { _exec.withLockedValue { $0 = newValue } }
+    }
+    var shell: ShellDelegate? {
+        get { _shell.withLockedValue { $0 } }
+        set { _shell.withLockedValue { $0 = newValue } }
+    }
+    var directTCPIP: DirectTCPIPDelegate? {
+        get { _directTCPIP.withLockedValue { $0 } }
+        set { _directTCPIP.withLockedValue { $0 = newValue } }
+    }
     
     public func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType, username: String?) -> NIOCore.EventLoopFuture<Void> {
         switch channelType {
@@ -264,7 +280,7 @@ public final class SSHServer {
 }
 
 /// A set of options that can be applied to the SSH protocol.
-public struct SSHProtocolOption: Hashable {
+public struct SSHProtocolOption: Hashable, Sendable {
     internal enum Value: Hashable {
         case maximumPacketSize(Int)
     }

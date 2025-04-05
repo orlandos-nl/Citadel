@@ -18,7 +18,7 @@ public struct ShellServerEvent: Sendable {
     }
 }
 
-public protocol ShellDelegate {
+public protocol ShellDelegate: Sendable {
     func startShell(
         inbound: AsyncStream<ShellClientEvent>,
         outbound: ShellOutboundWriter,

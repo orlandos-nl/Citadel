@@ -487,12 +487,12 @@ extension SSHClient {
     public func openSFTP(
         logger: Logger = .init(label: "nl.orlandos.citadel.sftp")
     ) async throws -> SFTPClient {
-        try await eventLoop.flatSubmit {
-            let createChannel = self.eventLoop.makePromise(of: Channel.self)
-            let createClient = self.eventLoop.makePromise(of: SFTPClient.self)
-            let timeoutCheck = self.eventLoop.makePromise(of: Void.self)
+        try await eventLoop.flatSubmit { [eventLoop, sshHandler = session.sshHandler] in
+            let createChannel = eventLoop.makePromise(of: Channel.self)
+            let createClient = eventLoop.makePromise(of: SFTPClient.self)
+            let timeoutCheck = eventLoop.makePromise(of: Void.self)
             
-            self.session.sshHandler.createChannel(createChannel) { channel, _ in
+            sshHandler.value.createChannel(createChannel) { channel, _ in
                 SFTPClient.setupChannelHanders(channel: channel, logger: logger)
                     .map { client in
                         createClient.succeed(client)
@@ -503,14 +503,14 @@ extension SSHClient {
                 logger.warning("SFTP subsystem request or initialize message received no reply after 15 seconds. Likely the result of opening too many SFTPClient handles.")
             }
             
-            self.eventLoop.scheduleTask(in: .seconds(15)) {
+            eventLoop.scheduleTask(in: .seconds(15)) {
                 timeoutCheck.fail(SFTPError.missingResponse)
                 createChannel.fail(SFTPError.missingResponse)
                 createClient.fail(SFTPError.missingResponse)
             }
             
             return createChannel.futureResult.flatMap { channel in
-                let openSubsystem = self.eventLoop.makePromise(of: Void.self)
+                let openSubsystem = eventLoop.makePromise(of: Void.self)
 
                 logger.debug("SFTP requesting subsystem")
 
@@ -551,14 +551,18 @@ extension SSHClient {
 }
 
 /// A tracker for in-flight SFTP requests. Request IDs are allocated by `SFTPClient`.
-final class SFTPResponses: @unchecked Sendable {
+final class SFTPResponses: Sendable {
     let _initialized: NIOLockedValueBox<Bool> = NIOLockedValueBox<Bool>(false)
     var isInitialized: Bool {
         get { _initialized.withLockedValue { $0 } }
         set { _initialized.withLockedValue { $0 = newValue } }
     }
     let sftpVersion: EventLoopPromise<SFTPMessage.Version>
-    var responses = [UInt32: EventLoopPromise<SFTPResponse>]()
+    let _responses = NIOLockedValueBox<[UInt32: EventLoopPromise<SFTPResponse>]>([:])
+    var responses: [UInt32: EventLoopPromise<SFTPResponse>] {
+        get { _responses.withLockedValue { $0 } }
+        set { _responses.withLockedValue { $0 = newValue } }
+    }
     
     init(sftpVersion: EventLoopPromise<SFTPMessage.Version>) {
         self.sftpVersion = sftpVersion

@@ -1,5 +1,5 @@
 /// A specific version of the SFTP protocol.
-public enum SFTPProtocolVersion: RawRepresentable, Hashable, Comparable {
+public enum SFTPProtocolVersion: RawRepresentable, Hashable, Comparable, Sendable {
     /// SFTP version 3 - https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
     ///
     /// - Note: This is by far the most commonly implemented version of SFTP and the only one
@@ -101,7 +101,7 @@ public enum SFTPMessageType: UInt8 {
     }
 }
 
-public enum SFTPStatusCode: RawRepresentable, Hashable, CustomDebugStringConvertible {
+public enum SFTPStatusCode: RawRepresentable, Hashable, CustomDebugStringConvertible, Sendable {
     case ok
     case eof
     case noSuchFile

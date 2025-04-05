@@ -1,8 +1,9 @@
 import NIO
-import NIOSSH
+@preconcurrency import NIOSSH
 import Logging
+import NIOConcurrencyHelpers
 
-final class ClientHandshakeHandler: ChannelInboundHandler {
+final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Any
 
     private let promise: EventLoopPromise<Void>
@@ -34,13 +35,37 @@ final class ClientHandshakeHandler: ChannelInboundHandler {
     }
 }
 
+public struct SSHClientSettings: Sendable {
+    public var host: String
+    public var port: Int
+    public var authenticationMethod: @Sendable () -> SSHAuthenticationMethod
+    public var hostKeyValidator: SSHHostKeyValidator
+    public var algorithms: SSHAlgorithms = SSHAlgorithms()
+    public var protocolOptions: Set<SSHProtocolOption> = []
+    public var group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton
+    internal var channelHandlers: [ChannelHandler & Sendable] = []
+    public var connectTimeout: TimeAmount = .seconds(30)
+
+    init(
+        host: String,
+        port: Int = 22,
+        authenticationMethod: @Sendable @escaping () -> SSHAuthenticationMethod,
+        hostKeyValidator: SSHHostKeyValidator
+    ) {
+        self.host = host
+        self.port = port
+        self.authenticationMethod = authenticationMethod
+        self.hostKeyValidator = hostKeyValidator
+    }
+}
+
 final class SSHClientSession {
     let channel: Channel
-    let sshHandler: NIOSSHHandler
+    let sshHandler: NIOLoopBoundBox<NIOSSHHandler>
     
     init(channel: Channel, sshHandler: NIOSSHHandler) {
         self.channel = channel
-        self.sshHandler = sshHandler
+        self.sshHandler = NIOLoopBoundBox(sshHandler, eventLoop: channel.eventLoop)
     }
     
     /// Creates a new SSH session on the given channel. This allows you to use an existing channel for the SSH session.
@@ -51,23 +76,41 @@ final class SSHClientSession {
     /// - group: The event loop group to use, will use a new group with one thread if not specified.
     public static func connect(
         on channel: Channel,
-        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
+        authenticationMethod: @escaping @Sendable @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
+    ) async throws -> SSHClientSession {
+        try await connect(
+            on: channel,
+            settings: SSHClientSettings(
+                host: "127.0.0.1",
+                port: 22,
+                authenticationMethod: authenticationMethod,
+                hostKeyValidator: hostKeyValidator
+            )
+        )
+    }
+
+    /// Creates a new SSH session on the given channel. This allows you to use an existing channel for the SSH session.
+    /// - channel: The channel to use for the SSH session, could be an existing TCP socket or proxy connection.
+    /// - settings: The settings to use for the SSH session.
+    public static func connect(
+        on channel: Channel,
+        settings: SSHClientSettings
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(
             eventLoop: channel.eventLoop,
             loginTimeout: .seconds(10)
         )
         var clientConfiguration = SSHClientConfiguration(
-            userAuthDelegate: authenticationMethod(),
-            serverAuthDelegate: hostKeyValidator
+            userAuthDelegate: settings.authenticationMethod(),
+            serverAuthDelegate: settings.hostKeyValidator
         )
         
-        algorithms.apply(to: &clientConfiguration)
+        settings.algorithms.apply(to: &clientConfiguration)
         
-        for option in protocolOptions {
+        for option in settings.protocolOptions {
             option.apply(to: &clientConfiguration)
         }
         
@@ -82,6 +125,50 @@ final class SSHClientSession {
             handshakeHandler.authenticated
         }.flatMap {
             channel.pipeline.handler(type: NIOSSHHandler.self).map { sshHandler in
+                SSHClientSession(channel: channel, sshHandler: sshHandler)
+            }
+        }.get()
+    }
+
+    /// Creates a new SSH session on a new channel. This will connect to the given host and port.
+    /// - settings: The settings to use for the SSH session.
+    public static func connect(
+        settings: SSHClientSettings
+    ) async throws -> SSHClientSession {
+        let eventLoop = settings.group.any()
+        let handshakeHandler = ClientHandshakeHandler(
+            eventLoop: eventLoop,
+            loginTimeout: .seconds(10)
+        )
+        var clientConfiguration = SSHClientConfiguration(
+            userAuthDelegate: settings.authenticationMethod(),
+            serverAuthDelegate: settings.hostKeyValidator
+        )
+        
+        settings.algorithms.apply(to: &clientConfiguration)
+        
+        for option in settings.protocolOptions {
+            option.apply(to: &clientConfiguration)
+        }
+        
+        let bootstrap = ClientBootstrap(group: eventLoop).channelInitializer { channel in
+            channel.pipeline.addHandlers(settings.channelHandlers + [
+                NIOSSHHandler(
+                    role: .client(clientConfiguration),
+                    allocator: channel.allocator,
+                    inboundChildChannelInitializer: nil
+                ),
+                handshakeHandler
+            ])
+        }
+        .connectTimeout(settings.connectTimeout)
+        .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+        .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
+        
+        return try await bootstrap.connect(host: settings.host, port: settings.port).flatMap { channel in
+            return handshakeHandler.authenticated.flatMap {
+                channel.pipeline.handler(type: NIOSSHHandler.self)
+            }.map { sshHandler in
                 SSHClientSession(channel: channel, sshHandler: sshHandler)
             }
         }.get()
@@ -101,57 +188,37 @@ final class SSHClientSession {
     public static func connect(
         host: String,
         port: Int = 22,
-        authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
+        authenticationMethod: @Sendable @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
-        group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
+        group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton,
         channelHandlers: [ChannelHandler] = [],
         connectTimeout: TimeAmount = .seconds(30)
     ) async throws -> SSHClientSession {
-        let handshakeHandler = ClientHandshakeHandler(
-            eventLoop: group.next(),
-            loginTimeout: .seconds(10)
+        var settings = SSHClientSettings(
+            host: host,
+            port: port,
+            authenticationMethod: authenticationMethod,
+            hostKeyValidator: hostKeyValidator
         )
-        var clientConfiguration = SSHClientConfiguration(
-            userAuthDelegate: authenticationMethod(),
-            serverAuthDelegate: hostKeyValidator
+
+        settings.algorithms = algorithms
+        settings.protocolOptions = protocolOptions
+        settings.group = group
+        settings.channelHandlers = channelHandlers
+        settings.connectTimeout = connectTimeout
+        
+        return try await connect(
+            settings: settings
         )
-        
-        algorithms.apply(to: &clientConfiguration)
-        
-        for option in protocolOptions {
-            option.apply(to: &clientConfiguration)
-        }
-        
-        let bootstrap = ClientBootstrap(group: group).channelInitializer { channel in
-            channel.pipeline.addHandlers(channelHandlers + [
-                NIOSSHHandler(
-                    role: .client(clientConfiguration),
-                    allocator: channel.allocator,
-                    inboundChildChannelInitializer: nil
-                ),
-                handshakeHandler
-            ])
-        }
-        .connectTimeout(connectTimeout)
-        .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
-        .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
-        
-        return try await bootstrap.connect(host: host, port: port).flatMap { channel in
-            return handshakeHandler.authenticated.flatMap {
-                channel.pipeline.handler(type: NIOSSHHandler.self)
-            }.map { sshHandler in
-                SSHClientSession(channel: channel, sshHandler: sshHandler)
-            }
-        }.get()
     }
 }
 
 public struct InvalidHostKey: Error, Equatable {}
 
 /// A host key validator that can be used to validate an SSH host key. This can be used to validate the host key against a set of trusted keys, or to accept any key.
-public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
+public struct SSHHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, Sendable {
     private enum Method {
         case trustedKeys(Set<NIOSSHPublicKey>)
         case acceptAnything

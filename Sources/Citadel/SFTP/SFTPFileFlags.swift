@@ -49,7 +49,7 @@ public struct SFTPOpenFileFlags: OptionSet, CustomDebugStringConvertible, Sendab
     }
 }
 
-public struct SFTPFileAttributes: CustomDebugStringConvertible {
+public struct SFTPFileAttributes: CustomDebugStringConvertible, Sendable {
     public struct Flags: OptionSet {
         public var rawValue: UInt32
         
@@ -64,7 +64,7 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
         public static let extended = Flags(rawValue: 0x80000000)
     }
     
-    public struct UserGroupId {
+    public struct UserGroupId: Sendable {
         public let userId: UInt32
         public let groupId: UInt32
         
@@ -77,7 +77,7 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
         }
     }
     
-    public struct AccessModificationTime {
+    public struct AccessModificationTime: Sendable {
         // Both written as UInt32 seconds since jan 1 1970 as UTC
         public let accessTime: Date
         public let modificationTime: Date
@@ -137,6 +137,6 @@ public struct SFTPFileAttributes: CustomDebugStringConvertible {
         return attr
     }()
     
-    public var debugDescription: String { "{perm: \(permissions), size: \(size), uidgid: \(uidgid)}" }
+    public var debugDescription: String { "{perm: \(String(describing: permissions)), size: \(String(describing: size)), uidgid: \(String(describing: uidgid))}" }
 }
 

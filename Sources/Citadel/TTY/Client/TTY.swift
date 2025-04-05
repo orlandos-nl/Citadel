@@ -2,7 +2,7 @@ import Foundation
 import Logging
 import NIO
 import NIOSSH
-
+import NIOConcurrencyHelpers
 /// Represents an error that occurred while processing TTY standard error output
 public struct TTYSTDError: Error {
     /// The error message as a raw byte buffer
@@ -92,7 +92,7 @@ public struct TTYStdinWriter {
     }
 }
 
-final class ExecCommandHandler: ChannelDuplexHandler {
+final class ExecCommandHandler: ChannelDuplexHandler, Sendable {
     enum Output {
         case channelSuccess
         case stdout(ByteBuffer)
@@ -107,11 +107,11 @@ final class ExecCommandHandler: ChannelDuplexHandler {
     typealias OutboundOut = SSHChannelData
 
     let logger: Logger
-    let onOutput: (Channel, Output) -> Void
+    let onOutput: @Sendable (Channel, Output) -> Void
 
     init(
         logger: Logger,
-        onOutput: @escaping (Channel, Output) -> Void
+        onOutput: @escaping @Sendable (Channel, Output) -> Void
     ) {
         self.logger = logger
         self.onOutput = onOutput
@@ -271,8 +271,8 @@ extension SSHClient {
     ) async throws -> (channel: Channel, output: AsyncThrowingStream<ExecCommandOutput, Error>) {
         let (stream, streamContinuation) = AsyncThrowingStream<ExecCommandOutput, Error>.makeStream()
 
-        var hasReceivedChannelSuccess = false
-        var exitCode: Int?
+        let hasReceivedChannelSuccess = NIOLockedValueBox<Bool>(false)
+        let exitCode = NIOLockedValueBox<Int?>(nil)
 
         let handler = ExecCommandHandler(logger: logger) { channel, output in
             switch output {
@@ -284,33 +284,33 @@ extension SSHClient {
                 self.logger.debug("EOF triggered, ending the command stream.")
                 if let error {
                     streamContinuation.finish(throwing: error)
-                } else if let exitCode, exitCode != 0 {
+                } else if let exitCode = exitCode.withLockedValue({ $0 }), exitCode != 0 {
                     streamContinuation.finish(throwing: CommandFailed(exitCode: exitCode))
                 } else {
                     streamContinuation.finish()
                 }
             case .channelSuccess:
-                if case .tty(.some(let command)) = mode, !hasReceivedChannelSuccess {
+                if case .tty(.some(let command)) = mode, !hasReceivedChannelSuccess.withLockedValue({ $0 }) {
                     let commandData = SSHChannelData(
                         type: .channel,
                         data: .byteBuffer(ByteBuffer(string: command + ";exit\n"))
                     )
                     channel.writeAndFlush(commandData, promise: nil)
-                    hasReceivedChannelSuccess = true
+                    hasReceivedChannelSuccess.withLockedValue({ $0 = true })
                 }
             case .exit(let status):
                 self.logger.debug("Process exited with status code \(status). Will await on EOF for correct exit")
-                exitCode = status
+                exitCode.withLockedValue({ $0 = status })
             }
         }
 
-        let channel = try await eventLoop.flatSubmit {
-            let createChannel = self.eventLoop.makePromise(of: Channel.self)
-            self.session.sshHandler.createChannel(createChannel) { channel, _ in
+        let channel = try await eventLoop.flatSubmit { [eventLoop, sshHandler = session.sshHandler] in
+            let createChannel = eventLoop.makePromise(of: Channel.self)
+            sshHandler.value.createChannel(createChannel) { channel, _ in
                 channel.pipeline.addHandlers(handler)
             }
 
-            self.eventLoop.scheduleTask(in: .seconds(15)) {
+            eventLoop.scheduleTask(in: .seconds(15)) {
                 createChannel.fail(CitadelError.channelCreationFailed)
             }
 

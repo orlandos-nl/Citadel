@@ -150,7 +150,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testSimpleSFTP() async throws {
-        final class SFTP: SFTPDelegate {
+        final class SFTP: SFTPDelegate, @unchecked /* for testing */ Sendable {
             var didCreateDirectory = false
             func createDirectory(_ filePath: String, withAttributes: SFTPFileAttributes, context: SSHContext) async throws -> SFTPStatusCode {
                 XCTAssertEqual(context.username, "citadel")
@@ -174,7 +174,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testExecExitCode() async throws {
-        final class Exec: ExecDelegate {
+        final class Exec: ExecDelegate, @unchecked /* for testing */ Sendable {
             struct CommandContext: ExecCommandContext {
                 func terminate() async throws {
                     // Always fine
