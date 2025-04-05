@@ -194,7 +194,7 @@ enum SFTPResponse: Sendable {
     }
 }
 
-public protocol SFTPMessageContent: CustomDebugStringConvertible {
+public protocol SFTPMessageContent: CustomDebugStringConvertible, Sendable {
     static var id: SFTPMessageType { get }
 }
 

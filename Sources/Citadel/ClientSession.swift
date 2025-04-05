@@ -1,6 +1,7 @@
 import NIO
-import NIOSSH
+@preconcurrency import NIOSSH
 import Logging
+import NIOConcurrencyHelpers
 
 final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Any
@@ -36,11 +37,11 @@ final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
 
 final class SSHClientSession {
     let channel: Channel
-    let sshHandler: NIOSSHHandler
+    let sshHandler: NIOLoopBoundBox<NIOSSHHandler>
     
     init(channel: Channel, sshHandler: NIOSSHHandler) {
         self.channel = channel
-        self.sshHandler = sshHandler
+        self.sshHandler = NIOLoopBoundBox(sshHandler, eventLoop: channel.eventLoop)
     }
     
     /// Creates a new SSH session on the given channel. This allows you to use an existing channel for the SSH session.

@@ -42,7 +42,7 @@ extension SSHClient {
     ) async throws -> Channel {
         return try await eventLoop.flatSubmit {
             let createdChannel = self.eventLoop.makePromise(of: Channel.self)
-            self.session.sshHandler.createChannel(
+            self.session.sshHandler.value.createChannel(
                 createdChannel,
                 channelType: .directTCPIP(settings)
             ) { channel, type in

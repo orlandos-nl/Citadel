@@ -1,6 +1,6 @@
 import Foundation
 import NIO
-import NIOSSH
+@preconcurrency import NIOSSH
 
 /// A channel handler that manages TTY (terminal) input/output for SSH command execution.
 /// This handler processes both incoming and outgoing data through the SSH channel.
@@ -112,9 +112,9 @@ extension SSHClient {
         let channel: Channel
         
         do {
-            channel = try await eventLoop.flatSubmit {
-                let createChannel = self.eventLoop.makePromise(of: Channel.self)
-                self.session.sshHandler.createChannel(createChannel) { channel, _ in
+            channel = try await eventLoop.flatSubmit { [eventLoop, sshHandler = session.sshHandler] in
+                let createChannel = eventLoop.makePromise(of: Channel.self)
+                sshHandler.value.createChannel(createChannel) { channel, _ in
                     channel.pipeline.addHandlers(
                         TTYHandler(
                             maxResponseSize: maxResponseSize,
@@ -123,7 +123,7 @@ extension SSHClient {
                     )
                 }
                 
-                self.eventLoop.scheduleTask(in: .seconds(15)) {
+                eventLoop.scheduleTask(in: .seconds(15)) {
                     createChannel.fail(CitadelError.channelCreationFailed)
                 }
                 

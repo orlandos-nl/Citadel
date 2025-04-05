@@ -1,5 +1,5 @@
 /// A specific version of the SFTP protocol.
-public enum SFTPProtocolVersion: RawRepresentable, Hashable, Comparable {
+public enum SFTPProtocolVersion: RawRepresentable, Hashable, Comparable, Sendable {
     /// SFTP version 3 - https://datatracker.ietf.org/doc/html/draft-ietf-secsh-filexfer-02
     ///
     /// - Note: This is by far the most commonly implemented version of SFTP and the only one
