@@ -35,7 +35,7 @@ final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     }
 }
 
-public struct SSHConnectionSettings: Sendable {
+public struct SSHClientSettings: Sendable {
     public var host: String
     public var port: Int
     public var authenticationMethod: @Sendable () -> SSHAuthenticationMethod
@@ -83,7 +83,7 @@ final class SSHClientSession {
     ) async throws -> SSHClientSession {
         try await connect(
             on: channel,
-            settings: SSHConnectionSettings(
+            settings: SSHClientSettings(
                 host: "127.0.0.1",
                 port: 22,
                 authenticationMethod: authenticationMethod,
@@ -97,7 +97,7 @@ final class SSHClientSession {
     /// - settings: The settings to use for the SSH session.
     public static func connect(
         on channel: Channel,
-        settings: SSHConnectionSettings
+        settings: SSHClientSettings
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(
             eventLoop: settings.group.next(),
@@ -133,7 +133,7 @@ final class SSHClientSession {
     /// Creates a new SSH session on a new channel. This will connect to the given host and port.
     /// - settings: The settings to use for the SSH session.
     public static func connect(
-        settings: SSHConnectionSettings
+        settings: SSHClientSettings
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(
             eventLoop: settings.group.next(),
@@ -195,7 +195,7 @@ final class SSHClientSession {
         channelHandlers: [ChannelHandler] = [],
         connectTimeout: TimeAmount = .seconds(30)
     ) async throws -> SSHClientSession {
-        var settings = SSHConnectionSettings(
+        var settings = SSHClientSettings(
             host: host,
             port: port,
             authenticationMethod: authenticationMethod,
