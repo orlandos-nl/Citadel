@@ -11,12 +11,14 @@ Do you need professional support? We're available at [joannis@unbeatable.softwar
 Citadel's `SSHClient` needs a connection to a SSH server first:
 
 ```swift
-let client = try await SSHClient.connect(
+let settings = SSHClientSettings(
     host: "example.com",
     authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
-    hostKeyValidator: .acceptAnything(), // Please use another validator if at all possible, it's insecure
-    reconnect: .never
+    // Please use another validator if at all possible, it's insecure
+    // But it's an easy way to try out Citadel
+    hostKeyValidator: .acceptAnything()
 )
+let client = try await SSHClient.connect(to: settings)
 ```
 
 Using that client, we support a couple types of operations:
@@ -83,11 +85,36 @@ try await client.withPTY(
         terminalPixelHeight: 0,
         terminalModes: .init([.ECHO: 1])
     )
-) { ttyOutput, ttyStdinWriter in 
-    ...do something...
+) { ttyOutput, ttyStdinWriter in
+    // ...do something...
 }
 ```
 
+### Jump Hosts
+
+Citadel supports jumping to another Host. First, connect to the jump host:
+
+```swift
+let jumpHostSettings = SSHClientSettings(
+    host: "jump.example.com",
+    authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
+    hostKeyValidator: .acceptAnything()
+)
+let jumpHostClient = try await SSHClient.connect(to: jumpHostSettings)
+```
+
+Then, jump to the target host:
+
+```swift
+let targetHostSettings = SSHClientSettings(
+    host: "target.example.com",
+    authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
+    hostKeyValidator: .acceptAnything()
+)
+let targetHostClient = try await jumpHostClient.jump(to: targetHostSettings)
+```
+
+You can chain multiple jumps this way as well.
 
 ### SFTP Client
 

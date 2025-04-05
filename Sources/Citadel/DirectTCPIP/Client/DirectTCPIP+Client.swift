@@ -50,9 +50,13 @@ extension SSHClient {
                     return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
                 }
                 
-                return channel.pipeline.addHandler(DataToBufferCodec()).flatMap {
-                    return initialize(channel)
+                do {
+                    try channel.pipeline.syncOperations.addHandler(DataToBufferCodec())
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
                 }
+
+                return initialize(channel)
             }
             
             return createdChannel.futureResult

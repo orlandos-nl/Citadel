@@ -152,7 +152,7 @@ public final class SSHClient {
     /// - settings: The settings to use for the connection.
     /// - Returns: An SSH client.
     public static func connect(
-        settings: SSHClientSettings
+        to settings: SSHClientSettings
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(settings: settings)
         
@@ -172,11 +172,47 @@ public final class SSHClient {
         on channel: Channel,
         settings: SSHClientSettings
     ) async throws -> SSHClient {
-        let session = try await SSHClientSession.connect(
+        try await SSHClientSession.addHandlers(
             on: channel,
             settings: settings
-        )
+        ).get()
         
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
+        let session = try await handshakeHandler.authenticated.map {
+            SSHClientSession(channel: channel, sshHandler: sshHandler)
+        }.get()
+
+        return SSHClient(
+            session: session,
+            authenticationMethod: settings.authenticationMethod(),
+            hostKeyValidator: settings.hostKeyValidator,
+            algorithms: settings.algorithms,
+            protocolOptions: settings.protocolOptions
+        )
+    }
+
+    public func jump(to settings: SSHClientSettings) async throws -> SSHClient {
+        let originatorAddress = try SocketAddress(ipAddress: "fe80::1", port: 22)
+        let channel = try await self.createDirectTCPIPChannel(
+            using: SSHChannelType.DirectTCPIP(
+                targetHost: settings.host,
+                targetPort: settings.port,
+                originatorAddress: originatorAddress
+            )
+        ) { channel in
+            SSHClientSession.addHandlers(
+                on: channel,
+                settings: settings
+            )
+        }
+        
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
+        let session = try await handshakeHandler.authenticated.map {
+            SSHClientSession(channel: channel, sshHandler: sshHandler)
+        }.get()
+
         return SSHClient(
             session: session,
             authenticationMethod: settings.authenticationMethod(),
@@ -201,12 +237,15 @@ public final class SSHClient {
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClient {
-        let session = try await SSHClientSession.connect(
+        try await SSHClientSession.addHandlers(
             on: channel,
             authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             protocolOptions: protocolOptions
-        )
+        ).get()
+        
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
         
         return SSHClient(
             session: session,
