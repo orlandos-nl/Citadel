@@ -172,10 +172,13 @@ public final class SSHClient {
         on channel: Channel,
         settings: SSHClientSettings
     ) async throws -> SSHClient {
-        let session = try await SSHClientSession.connect(
+        try await SSHClientSession.addHandlers(
             on: channel,
             settings: settings
-        )
+        ).get()
+        
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
         
         return SSHClient(
             session: session,
@@ -195,13 +198,21 @@ public final class SSHClient {
                 originatorAddress: originatorAddress
             )
         ) { channel in
-            // TODO: Add handlers here instead
-            return channel.eventLoop.makeSucceededVoidFuture()
+            SSHClientSession.addHandlers(
+                on: channel,
+                settings: settings
+            )
         }
+        
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
 
-        return try await SSHClient.connect(
-            on: channel,
-            settings: settings
+        return SSHClient(
+            session: session,
+            authenticationMethod: settings.authenticationMethod(),
+            hostKeyValidator: settings.hostKeyValidator,
+            algorithms: settings.algorithms,
+            protocolOptions: settings.protocolOptions
         )
     }
     
@@ -220,12 +231,15 @@ public final class SSHClient {
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClient {
-        let session = try await SSHClientSession.connect(
+        try await SSHClientSession.addHandlers(
             on: channel,
             authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             protocolOptions: protocolOptions
-        )
+        ).get()
+        
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
         
         return SSHClient(
             session: session,

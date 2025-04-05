@@ -74,14 +74,14 @@ final class SSHClientSession {
     /// - algorithms: The algorithms to use, will use the default algorithms if not specified.
     /// - protocolOptions: The protocol options to use, will use the default options if not specified.
     /// - group: The event loop group to use, will use a new group with one thread if not specified.
-    public static func connect(
+    static func addHandlers(
         on channel: Channel,
         authenticationMethod: @escaping @Sendable @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
-    ) async throws -> SSHClientSession {
-        try await connect(
+    ) -> EventLoopFuture<Void> {
+        addHandlers(
             on: channel,
             settings: SSHClientSettings(
                 host: "127.0.0.1",
@@ -95,10 +95,10 @@ final class SSHClientSession {
     /// Creates a new SSH session on the given channel. This allows you to use an existing channel for the SSH session.
     /// - channel: The channel to use for the SSH session, could be an existing TCP socket or proxy connection.
     /// - settings: The settings to use for the SSH session.
-    public static func connect(
+    static func addHandlers(
         on channel: Channel,
         settings: SSHClientSettings
-    ) async throws -> SSHClientSession {
+    ) -> EventLoopFuture<Void> {
         let handshakeHandler = ClientHandshakeHandler(
             eventLoop: channel.eventLoop,
             loginTimeout: .seconds(10)
@@ -114,7 +114,7 @@ final class SSHClientSession {
             option.apply(to: &clientConfiguration)
         }
         
-        return try await channel.pipeline.addHandlers(
+        return channel.pipeline.addHandlers(
             NIOSSHHandler(
                 role: .client(clientConfiguration),
                 allocator: channel.allocator,
@@ -123,16 +123,12 @@ final class SSHClientSession {
             handshakeHandler
         ).flatMap {
             handshakeHandler.authenticated
-        }.flatMap {
-            channel.pipeline.handler(type: NIOSSHHandler.self).map { sshHandler in
-                SSHClientSession(channel: channel, sshHandler: sshHandler)
-            }
-        }.get()
+        }
     }
 
     /// Creates a new SSH session on a new channel. This will connect to the given host and port.
     /// - settings: The settings to use for the SSH session.
-    public static func connect(
+    static func connect(
         settings: SSHClientSettings
     ) async throws -> SSHClientSession {
         let eventLoop = settings.group.any()
@@ -185,7 +181,7 @@ final class SSHClientSession {
     /// - group: The event loop group to use, will use a new group with one thread if not specified.
     /// - channelHandlers: Pass in an array of channel prehandlers that execute first. Default empty array
     /// - connectTimeout: Pass in the time before the connection times out. Default 30 seconds.
-    public static func connect(
+    static func connect(
         host: String,
         port: Int = 22,
         authenticationMethod: @Sendable @escaping @autoclosure () -> SSHAuthenticationMethod,
