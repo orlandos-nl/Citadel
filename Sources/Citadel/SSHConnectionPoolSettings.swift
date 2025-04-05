@@ -1,4 +1,4 @@
-internal struct SSHConnectionSettings {
+internal struct SSHConnectionPoolSettings {
     init() {}
     
     internal var reconnect = _SSHReconnectMode.never

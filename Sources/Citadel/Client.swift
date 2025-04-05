@@ -114,7 +114,7 @@ public final class SSHClient {
     private var userInitiatedClose = false
     let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
-    internal var connectionSettings = SSHConnectionSettings()
+    internal var connectionSettings = SSHConnectionPoolSettings()
     private let algorithms: SSHAlgorithms
     private let protocolOptions: Set<SSHProtocolOption>
     private var onDisconnect: (@Sendable () -> ())?
@@ -146,6 +146,44 @@ public final class SSHClient {
     
     public func onDisconnect(perform onDisconnect: @escaping @Sendable () -> ()) {
         self.onDisconnect = onDisconnect
+    }
+
+    /// Connects to an SSH server.
+    /// - settings: The settings to use for the connection.
+    /// - Returns: An SSH client.
+    public static func connect(
+        settings: SSHClientSettings
+    ) async throws -> SSHClient {
+        let session = try await SSHClientSession.connect(settings: settings)
+        
+        return SSHClient(
+            session: session,
+            authenticationMethod: settings.authenticationMethod(),
+            hostKeyValidator: settings.hostKeyValidator,
+            algorithms: settings.algorithms,
+            protocolOptions: settings.protocolOptions
+        )
+    }
+
+    /// Connects to an SSH server.
+    /// - settings: The settings to use for the connection.
+    /// - Returns: An SSH client.
+    public static func connect(
+        on channel: Channel,
+        settings: SSHClientSettings
+    ) async throws -> SSHClient {
+        let session = try await SSHClientSession.connect(
+            on: channel,
+            settings: settings
+        )
+        
+        return SSHClient(
+            session: session,
+            authenticationMethod: settings.authenticationMethod(),
+            hostKeyValidator: settings.hostKeyValidator,
+            algorithms: settings.algorithms,
+            protocolOptions: settings.protocolOptions
+        )
     }
     
     /// Connects to an SSH server.
@@ -200,7 +238,7 @@ public final class SSHClient {
         reconnect: SSHReconnectMode,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
-        group: MultiThreadedEventLoopGroup = .init(numberOfThreads: 1),
+        group: MultiThreadedEventLoopGroup = .singleton,
         channelHandlers: [ChannelHandler] = [],
         connectTimeout:TimeAmount = .seconds(30)
     ) async throws -> SSHClient {

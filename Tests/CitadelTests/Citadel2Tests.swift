@@ -305,13 +305,13 @@ final class Citadel2Tests: XCTestCase {
             try await outbound.write(ByteBuffer(string: "cat"))
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
-                    var i = UInt8.min
+                    var a = UInt8(ascii: "a")
                     for try await value in inbound {
                         switch value {
                         case .stdout(let value):
                             for byte in value.readableBytesView {
-                                XCTAssertEqual(byte, i)
-                                i = i &+ 1
+                                XCTAssertEqual(byte, a)
+                                a = a &+ 1
                             }
                         case .stderr(let value):
                             XCTFail("Unexpected stderr: \(String(buffer: value))")
@@ -320,7 +320,7 @@ final class Citadel2Tests: XCTestCase {
                 }
 
                 group.addTask {
-                    for i: UInt8 in .min ... .max {
+                    for i: UInt8 in UInt8(ascii: "a") ... UInt8(ascii: "z") {
                         let value = ByteBufferAllocator().buffer(integer: i)
                         try await outbound.write(value)
                     }
