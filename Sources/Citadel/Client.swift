@@ -114,7 +114,7 @@ public final class SSHClient {
     private var userInitiatedClose = false
     let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
-    internal var connectionSettings = SSHConnectionSettings()
+    internal var connectionSettings = SSHConnectionPoolSettings()
     private let algorithms: SSHAlgorithms
     private let protocolOptions: Set<SSHProtocolOption>
     private var onDisconnect: (@Sendable () -> ())?
