@@ -85,9 +85,8 @@ try await client.withPTY(
         terminalPixelHeight: 0,
         terminalModes: .init([.ECHO: 1])
     )
-) { ttyOutput, ttyStdinWriter in 
-    
-    ...do something...
+) { ttyOutput, ttyStdinWriter in
+    // ...do something...
 }
 ```
 
