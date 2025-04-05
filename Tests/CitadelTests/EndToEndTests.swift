@@ -150,15 +150,15 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testJump() async throws {
-        guard
-            let host = ProcessInfo.processInfo.environment["SSH_HOST"],
-            let _port = ProcessInfo.processInfo.environment["SSH_PORT"],
-            let port = Int(_port),
-            let username = ProcessInfo.processInfo.environment["SSH_USERNAME"],
-            let password = ProcessInfo.processInfo.environment["SSH_PASSWORD"]
-        else {
-            throw XCTSkip()
-        }
+         guard
+             let host = ProcessInfo.processInfo.environment["SSH_HOST"],
+             let _port = ProcessInfo.processInfo.environment["SSH_PORT"],
+             let port = Int(_port),
+             let username = ProcessInfo.processInfo.environment["SSH_USERNAME"],
+             let password = ProcessInfo.processInfo.environment["SSH_PASSWORD"]
+         else {
+             throw XCTSkip()
+         }
 
         let settings = SSHClientSettings(
             host: host,
@@ -167,11 +167,14 @@ final class EndToEndTests: XCTestCase {
             hostKeyValidator: .acceptAnything()
         )
 
-        let client = try await SSHClient.connect(settings: settings)
+        let client = try await SSHClient.connect(to: settings)
+        try await Task.sleep(for: .seconds(1))
         // Jump to the same server, from a different host
         let client2 = try await client.jump(to: settings)
         let output = try await client2.executeCommand("ls /")
         XCTAssertFalse(String(buffer: output).isEmpty)
+        try await client2.close()
+        try await client.close()
     }
 
     func testSimpleSFTP() async throws {

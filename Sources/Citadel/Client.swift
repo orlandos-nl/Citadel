@@ -152,7 +152,7 @@ public final class SSHClient {
     /// - settings: The settings to use for the connection.
     /// - Returns: An SSH client.
     public static func connect(
-        settings: SSHClientSettings
+        to settings: SSHClientSettings
     ) async throws -> SSHClient {
         let session = try await SSHClientSession.connect(settings: settings)
         
@@ -178,8 +178,11 @@ public final class SSHClient {
         ).get()
         
         let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
-        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
-        
+        let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
+        let session = try await handshakeHandler.authenticated.map {
+            SSHClientSession(channel: channel, sshHandler: sshHandler)
+        }.get()
+
         return SSHClient(
             session: session,
             authenticationMethod: settings.authenticationMethod(),
@@ -205,7 +208,10 @@ public final class SSHClient {
         }
         
         let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
-        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
+        let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
+        let session = try await handshakeHandler.authenticated.map {
+            SSHClientSession(channel: channel, sshHandler: sshHandler)
+        }.get()
 
         return SSHClient(
             session: session,

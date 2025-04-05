@@ -17,6 +17,10 @@ final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     init(eventLoop: EventLoop, loginTimeout: TimeAmount) {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
+
+        eventLoop.scheduleTask(deadline: .now() + loginTimeout) {
+            promise.fail(ChannelError.connectTimeout(loginTimeout))
+        }
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
@@ -59,7 +63,7 @@ public struct SSHClientSettings: Sendable {
     }
 }
 
-final class SSHClientSession {
+final class SSHClientSession: Sendable {
     let channel: Channel
     let sshHandler: NIOLoopBoundBox<NIOSSHHandler>
     
@@ -114,15 +118,18 @@ final class SSHClientSession {
             option.apply(to: &clientConfiguration)
         }
         
-        return channel.pipeline.addHandlers(
-            NIOSSHHandler(
-                role: .client(clientConfiguration),
-                allocator: channel.allocator,
-                inboundChildChannelInitializer: nil
-            ),
-            handshakeHandler
-        ).flatMap {
-            handshakeHandler.authenticated
+        do {
+            try channel.pipeline.syncOperations.addHandlers(
+                NIOSSHHandler(
+                    role: .client(clientConfiguration),
+                    allocator: channel.allocator,
+                    inboundChildChannelInitializer: nil
+                ),
+                handshakeHandler
+            )
+            return channel.eventLoop.makeSucceededVoidFuture()
+        } catch {
+            return channel.eventLoop.makeFailedFuture(error)
         }
     }
 
@@ -158,6 +165,7 @@ final class SSHClientSession {
             ])
         }
         .connectTimeout(settings.connectTimeout)
+//        .channelOption(ChannelOptions.autoRead, value: true)
         .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
         .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
         
