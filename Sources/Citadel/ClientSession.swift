@@ -42,7 +42,7 @@ public struct SSHClientSettings: Sendable {
     public var hostKeyValidator: SSHHostKeyValidator
     public var algorithms: SSHAlgorithms = SSHAlgorithms()
     public var protocolOptions: Set<SSHProtocolOption> = []
-    public var group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    public var group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton
     internal var channelHandlers: [ChannelHandler & Sendable] = []
     public var connectTimeout: TimeAmount = .seconds(30)
 
@@ -100,7 +100,7 @@ final class SSHClientSession {
         settings: SSHClientSettings
     ) async throws -> SSHClientSession {
         let handshakeHandler = ClientHandshakeHandler(
-            eventLoop: settings.group.next(),
+            eventLoop: channel.eventLoop,
             loginTimeout: .seconds(10)
         )
         var clientConfiguration = SSHClientConfiguration(
@@ -135,8 +135,9 @@ final class SSHClientSession {
     public static func connect(
         settings: SSHClientSettings
     ) async throws -> SSHClientSession {
+        let eventLoop = settings.group.any()
         let handshakeHandler = ClientHandshakeHandler(
-            eventLoop: settings.group.next(),
+            eventLoop: eventLoop,
             loginTimeout: .seconds(10)
         )
         var clientConfiguration = SSHClientConfiguration(
@@ -150,7 +151,7 @@ final class SSHClientSession {
             option.apply(to: &clientConfiguration)
         }
         
-        let bootstrap = ClientBootstrap(group: settings.group).channelInitializer { channel in
+        let bootstrap = ClientBootstrap(group: eventLoop).channelInitializer { channel in
             channel.pipeline.addHandlers(settings.channelHandlers + [
                 NIOSSHHandler(
                     role: .client(clientConfiguration),
@@ -191,7 +192,7 @@ final class SSHClientSession {
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = [],
-        group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
+        group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton,
         channelHandlers: [ChannelHandler] = [],
         connectTimeout: TimeAmount = .seconds(30)
     ) async throws -> SSHClientSession {
