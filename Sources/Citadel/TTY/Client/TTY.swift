@@ -1,8 +1,9 @@
 import Foundation
 import Logging
 import NIO
-import NIOSSH
+@preconcurrency import NIOSSH
 import NIOConcurrencyHelpers
+
 /// Represents an error that occurred while processing TTY standard error output
 public struct TTYSTDError: Error {
     /// The error message as a raw byte buffer
@@ -232,7 +233,7 @@ extension SSHClient {
     /// Executes a command on the remote server and returns a stream of its output
     /// - Parameters:
     ///   - command: The command to execute on the remote server
-    ///   - environment: Array of environment variables to set for the command
+    ///   - environment: Array of environment variables to set for the command. This requires `PermitUserEnvironment` to be enabled in your OpenSSH server's configuration.
     ///   - inShell: Whether to execute the command within a shell context. Defaults to false
     /// - Returns: An async stream that yields command output as it becomes available
     /// - Throws: CommandFailed if the command exits with non-zero status
@@ -342,7 +343,7 @@ extension SSHClient {
     /// Creates a pseudo-terminal (PTY) session and executes the provided closure with input/output streams
     /// - Parameters:
     ///   - request: PTY configuration parameters
-    ///   - environment: Array of environment variables to set for the PTY session
+    ///   - environment: Array of environment variables to set for the PTY session. This requires `PermitUserEnvironment` to be enabled in your OpenSSH server's configuration.
     ///   - perform: Closure that receives TTY input/output streams and performs terminal operations
     /// - Throws: Any errors that occur during PTY setup or operation
     @available(macOS 15.0, *)

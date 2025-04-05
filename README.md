@@ -74,20 +74,17 @@ An example of how pty model can be used:
 
 ```swift
 try await client.withPTY(
-        SSHChannelRequestEvent.PseudoTerminalRequest(
-            wantReply: true,
-            term: "xterm",
-            terminalCharacterWidth: 80,
-            terminalRowHeight: 24,
-            terminalPixelWidth: 0,
-            terminalPixelHeight: 0,
-            terminalModes: .init([.ECHO: 1])
-        ),
-        environment: [SSHChannelRequestEvent.EnvironmentRequest(wantReply: true, name: "LANG", value: "en_US.UTF-8")]) {
-        
-        ttyOutput, ttyStdinWriter in 
-        
-        ...do something...
+    SSHChannelRequestEvent.PseudoTerminalRequest(
+        wantReply: true,
+        term: "xterm",
+        terminalCharacterWidth: 80,
+        terminalRowHeight: 24,
+        terminalPixelWidth: 0,
+        terminalPixelHeight: 0,
+        terminalModes: .init([.ECHO: 1])
+    )
+) { ttyOutput, ttyStdinWriter in 
+    ...do something...
 }
 ```
 
