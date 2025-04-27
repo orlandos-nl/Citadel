@@ -34,13 +34,13 @@ let package = Package(
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
                 .product(name: "BigInt", package: "BigInt"),
                 .product(name: "Logging", package: "swift-log"),
-                .productItem(name: "ColorizeSwift", package: "ColorizeSwift")
             ]
         ),
         .executableTarget(
             name: "CitadelServerExample",
             dependencies: [
-                "Citadel"
+                "Citadel",
+                .productItem(name: "ColorizeSwift", package: "ColorizeSwift")
             ]),
         .testTarget(
             name: "CitadelTests",
