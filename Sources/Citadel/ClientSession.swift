@@ -50,7 +50,7 @@ public struct SSHClientSettings: Sendable {
     internal var channelHandlers: [ChannelHandler & Sendable] = []
     public var connectTimeout: TimeAmount = .seconds(30)
 
-    init(
+    public init(
         host: String,
         port: Int = 22,
         authenticationMethod: @Sendable @escaping () -> SSHAuthenticationMethod,
