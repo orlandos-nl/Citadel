@@ -13,7 +13,7 @@ Citadel's `SSHClient` needs a connection to a SSH server first:
 ```swift
 let settings = SSHClientSettings(
     host: "example.com",
-    authenticationMethod: .passwordBased(username: "joannis", password: "s3cr3t"),
+    authenticationMethod: { .passwordBased(username: "joannis", password: "s3cr3t") },
     // Please use another validator if at all possible, it's insecure
     // But it's an easy way to try out Citadel
     hostKeyValidator: .acceptAnything()
