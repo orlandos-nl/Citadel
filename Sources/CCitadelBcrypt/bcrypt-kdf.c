@@ -3,6 +3,7 @@
 
 #ifndef __APPLE__
 #include <sys/random.h>
+#include <unistd.h>
 #endif
 
 #include "bcrypt-kdf.h"
