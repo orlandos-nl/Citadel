@@ -117,17 +117,17 @@ public enum SSHKeyDetection {
         var keyContent = keyString.replacingOccurrences(of: "\n", with: "")
         
         guard
-            key.hasPrefix("-----BEGIN OPENSSH PRIVATE KEY-----"),
-            key.hasSuffix("-----END OPENSSH PRIVATE KEY-----")
+            keyContent.hasPrefix("-----BEGIN OPENSSH PRIVATE KEY-----"),
+            keyContent.hasSuffix("-----END OPENSSH PRIVATE KEY-----")
         else {
             throw SSHKeyDetectionError.invalidPrivateKeyFormat
         }
         
         // Extract the base64 content
-        key.removeLast("-----END OPENSSH PRIVATE KEY-----".count)
-        key.removeFirst("-----BEGIN OPENSSH PRIVATE KEY-----".count)
+        keyContent.removeLast("-----END OPENSSH PRIVATE KEY-----".count)
+        keyContent.removeFirst("-----BEGIN OPENSSH PRIVATE KEY-----".count)
         
-        guard let data = Data(base64Encoded: key) else {
+        guard let data = Data(base64Encoded: keyContent) else {
             throw SSHKeyDetectionError.invalidPrivateKeyFormat
         }
         
