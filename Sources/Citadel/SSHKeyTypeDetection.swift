@@ -1,4 +1,5 @@
 import Foundation
+import NIOCore
 
 /// Represents supported SSH key types that can be detected from key strings.
 ///
@@ -252,11 +253,13 @@ public enum SSHKeyDetection {
     
     /// Helper function to read a 32-bit unsigned integer from data.
     private static func readUInt32(from data: Data, at offset: inout Int) -> UInt32? {
+        // Fast path: require the 4 bytes to be present.
         guard offset + 4 <= data.count else { return nil }
-        
-        let value = data.subdata(in: offset..<(offset + 4)).withUnsafeBytes { bytes in
-            bytes.load(as: UInt32.self).bigEndian
-        }
+
+        // Wrap just the slice we need so we don’t copy the whole array.
+        var buf = ByteBuffer(bytes: data[offset ..< offset + 4])
+        guard let value: UInt32 = buf.readInteger(endianness: .big) else { return nil }
+
         offset += 4
         return value
     }
