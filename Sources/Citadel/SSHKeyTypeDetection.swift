@@ -194,13 +194,8 @@ public enum SSHKeyDetection {
         var offset = 0
         
         // Check magic bytes "openssh-key-v1\0"
-        let magic = "openssh-key-v1\0".data(using: .utf8)!
-        guard data.count >= magic.count else {
-            throw SSHKeyDetectionError.invalidPrivateKeyFormat
-        }
-        
-        let magicBytes = data.subdata(in: 0..<magic.count)
-        guard magicBytes == magic else {
+        let magic = "openssh-key-v1\0".utf8
+        guard data.starts(with: magic) else {
             throw SSHKeyDetectionError.invalidPrivateKeyFormat
         }
         offset += magic.count
