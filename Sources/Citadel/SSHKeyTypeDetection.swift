@@ -1,29 +1,58 @@
 import Foundation
 
 /// Represents supported SSH key types that can be detected from key strings.
-public enum SSHKeyType: String, CaseIterable {
-    case rsa = "ssh-rsa"
-    case ed25519 = "ssh-ed25519"
-    case ecdsaP256 = "ecdsa-sha2-nistp256"
-    case ecdsaP384 = "ecdsa-sha2-nistp384"
-    case ecdsaP521 = "ecdsa-sha2-nistp521"
+///
+/// A `struct` is used instead of a public `enum` so new algorithms can be
+/// added later without breaking source or ABI stability.
+public struct SSHKeyType: RawRepresentable, Equatable, Hashable, CaseIterable, CustomStringConvertible {
     
-    /// Human-readable description of the key type
+    // MARK: Backing storage for the algorithms currently bundled with Citadel.
+    internal enum BackingKeyType: String, CaseIterable {
+        case rsa        = "ssh-rsa"
+        case ed25519    = "ssh-ed25519"
+        case ecdsaP256  = "ecdsa-sha2-nistp256"
+        case ecdsaP384  = "ecdsa-sha2-nistp384"
+        case ecdsaP521  = "ecdsa-sha2-nistp521"
+    }
+    
+    // MARK: RawRepresentable
+    let backing: BackingKeyType
+    public var rawValue: String { backing.rawValue }
+    
+    public init?(rawValue: String) {
+        guard let backing = BackingKeyType(rawValue: rawValue) else { return nil }
+        self.backing = backing
+    }
+    
+    // Internal convenience initialiser
+    internal init(backing: BackingKeyType) {
+        self.backing = backing
+    }
+    
+    // MARK: CaseIterable
+    public static var allCases: [SSHKeyType] {
+        BackingKeyType.allCases.map(SSHKeyType.init(backing:))
+    }
+    
+    // MARK: Human-readable description (mirrors previous behaviour)
     public var description: String {
-        switch self {
-        case .rsa:
-            return "RSA"
-        case .ed25519:
-            return "ED25519"
-        case .ecdsaP256:
-            return "ECDSA P-256"
-        case .ecdsaP384:
-            return "ECDSA P-384"
-        case .ecdsaP521:
-            return "ECDSA P-521"
+        switch backing {
+        case .rsa:        return "RSA"
+        case .ed25519:    return "ED25519"
+        case .ecdsaP256:  return "ECDSA P-256"
+        case .ecdsaP384:  return "ECDSA P-384"
+        case .ecdsaP521:  return "ECDSA P-521"
         }
     }
+    
+    // MARK: Statically known key types
+    public static let rsa        = SSHKeyType(backing: .rsa)
+    public static let ed25519    = SSHKeyType(backing: .ed25519)
+    public static let ecdsaP256  = SSHKeyType(backing: .ecdsaP256)
+    public static let ecdsaP384  = SSHKeyType(backing: .ecdsaP384)
+    public static let ecdsaP521  = SSHKeyType(backing: .ecdsaP521)
 }
+
 
 /// Errors that can occur during SSH key type detection.
 public enum SSHKeyDetectionError: Error {
