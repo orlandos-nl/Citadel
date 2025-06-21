@@ -170,7 +170,7 @@ final class KeyTests: XCTestCase {
         XCTAssertThrowsError(try SSHKeyDetection.detectPublicKeyType(from: invalidKey)) { error in
             XCTAssertTrue(error is SSHKeyDetectionError)
             if let sshError = error as? SSHKeyDetectionError {
-                XCTAssertEqual(sshError, .invalidKeyFormat)
+                XCTAssertEqual(sshError, .invalidKeyFormat())
             }
         }
         
