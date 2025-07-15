@@ -140,7 +140,7 @@ extension Curve25519.Signing.PrivateKey: ByteBufferConvertible {
 
 extension ByteBuffer {
     mutating func decryptAES(
-        cipher: UnsafePointer<EVP_CIPHER>,
+        cipher: OpaquePointer,
         key: [UInt8],
         iv: [UInt8]
     ) throws {

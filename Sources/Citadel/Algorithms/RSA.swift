@@ -237,7 +237,7 @@ extension Insecure.RSA {
             let result = CCryptoBoringSSL_RSA_sign(
                 NID_sha1,
                 hash,
-                UInt32(hash.count),
+                Int(hash.count),
                 out,
                 &outLength,
                 context

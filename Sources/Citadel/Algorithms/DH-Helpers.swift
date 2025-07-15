@@ -95,7 +95,7 @@ extension ByteBuffer {
             
             let serialized = Array(bignum.serialize())
             (buffer.baseAddress! + 1)
-                .assign(from: serialized, count: serialized.count)
+                .update(from: serialized, count: serialized.count)
             
             if buffer[1] & 0x80 != 0 {
                 size += 1

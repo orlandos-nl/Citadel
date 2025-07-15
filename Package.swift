@@ -17,10 +17,10 @@ let package = Package(
     ],
     dependencies: [
         // .package(path: "/Users/joannisorlandos/git/joannis/swift-nio-ssh"),
-        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", "0.3.2" ..< "0.4.0"),
+        .package(name: "swift-nio-ssh", url: "https://github.com/Joannis/swift-nio-ssh.git", "0.3.4" ..< "0.4.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.2.0"),
-        .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "2.1.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.12.3"),
         .package(url: "https://github.com/mtynior/ColorizeSwift.git", from: "1.5.0"),
     ],
     targets: [
