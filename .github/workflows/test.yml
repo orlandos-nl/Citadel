@@ -22,10 +22,11 @@ jobs:
                     PASSWORD_ACCESS: true
                     DOCKER_MODS: linuxserver/mods:openssh-server-ssh-tunnel
         runs-on: ubuntu-latest
-        container: 
-          image: swift:5.10-jammy
-          env:
-            SWIFT_DETERMINISTIC_HASHING: 1
+        strategy:
+            matrix:
+                image: ["swift:5.10", "swift:6.0", "swift:6.1", "swiftlang/swift:nightly-6.2-jammy"]
+        container:
+            image: ${{ matrix.image }}
         steps:
             - uses: actions/checkout@v4
             - name: Resolve
