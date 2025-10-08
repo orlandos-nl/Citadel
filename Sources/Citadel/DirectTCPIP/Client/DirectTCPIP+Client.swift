@@ -1,7 +1,7 @@
 import NIO
 import NIOSSH
 
-final class DataToBufferCodec: ChannelDuplexHandler {
+internal final class DataToBufferCodec: ChannelDuplexHandler {
     typealias InboundIn = SSHChannelData
     typealias InboundOut = ByteBuffer
     typealias OutboundIn = ByteBuffer

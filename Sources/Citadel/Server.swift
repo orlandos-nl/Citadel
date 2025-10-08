@@ -124,11 +124,12 @@ final class SubsystemHandler: ChannelDuplexHandler {
     }
 }
 
-final class CitadelServerDelegate: Sendable {
+final class CitadelServerDelegate: Sendable, GlobalRequestDelegate {
     let _sftp = NIOLockedValueBox<SFTPDelegate?>(nil)
     let _exec = NIOLockedValueBox<ExecDelegate?>(nil)
     let _shell = NIOLockedValueBox<ShellDelegate?>(nil)
     let _directTCPIP = NIOLockedValueBox<DirectTCPIPDelegate?>(nil)
+    let _remotePortForward = NIOLockedValueBox<RemotePortForwardDelegate?>(nil)
 
     var sftp: SFTPDelegate? {
         get { _sftp.withLockedValue { $0 } }
@@ -146,7 +147,11 @@ final class CitadelServerDelegate: Sendable {
         get { _directTCPIP.withLockedValue { $0 } }
         set { _directTCPIP.withLockedValue { $0 = newValue } }
     }
-    
+    var remotePortForward: RemotePortForwardDelegate? {
+        get { _remotePortForward.withLockedValue { $0 } }
+        set { _remotePortForward.withLockedValue { $0 = newValue } }
+    }
+
     public func initializeSshChildChannel(_ channel: Channel, _ channelType: SSHChannelType, username: String?) -> NIOCore.EventLoopFuture<Void> {
         switch channelType {
         case .session:
@@ -175,6 +180,56 @@ final class CitadelServerDelegate: Sendable {
             }
         case .forwardedTCPIP:
             return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
+        }
+    }
+
+    func tcpForwardingRequest(
+        _ request: GlobalRequest.TCPForwardingRequest,
+        handler: NIOSSHHandler,
+        promise: EventLoopPromise<GlobalRequest.TCPForwardingResponse>
+    ) {
+        guard let delegate = remotePortForward else {
+            promise.fail(CitadelError.unsupported)
+            return
+        }
+
+        let context = SSHContext(username: handler.username)
+
+        switch request {
+        case .listen(let host, let port):
+            delegate.startListening(
+                host: host,
+                port: port,
+                handler: handler,
+                eventLoop: promise.futureResult.eventLoop,
+                context: context
+            ).whenComplete { result in
+                switch result {
+                case .success(let boundPort):
+                    if let boundPort = boundPort {
+                        promise.succeed(GlobalRequest.TCPForwardingResponse(boundPort: boundPort))
+                    } else {
+                        promise.fail(CitadelError.unsupported)
+                    }
+                case .failure(let error):
+                    promise.fail(error)
+                }
+            }
+
+        case .cancel(let host, let port):
+            delegate.stopListening(
+                host: host,
+                port: port,
+                eventLoop: promise.futureResult.eventLoop,
+                context: context
+            ).whenComplete { result in
+                switch result {
+                case .success:
+                    promise.succeed(GlobalRequest.TCPForwardingResponse(boundPort: nil))
+                case .failure(let error):
+                    promise.fail(error)
+                }
+            }
         }
     }
 }
@@ -220,7 +275,15 @@ public final class SSHServer {
     public func enableShell(withDelegate delegate: ShellDelegate) {
         self.delegate.shell = delegate
     }
-    
+
+    /// Enables remote port forwarding for SSH sessions targeting this SSH Server.
+    /// Once enabled, clients can request the server to listen on ports and forward connections.
+    /// - Parameter delegate: The delegate object that will handle port forwarding requests.
+    /// - Note: Remote port forwarding is disabled by default.
+    public func enableRemotePortForward(withDelegate delegate: RemotePortForwardDelegate) {
+        self.delegate.remotePortForward = delegate
+    }
+
     /// Closes the SSH Server, stopping new connections from coming in.
     public func close() async throws {
         try await channel.close()
@@ -246,7 +309,7 @@ public final class SSHServer {
                 var server = SSHServerConfiguration(
                     hostKeys: hostKeys,
                     userAuthDelegate: authenticationDelegate,
-                    globalRequestDelegate: nil
+                    globalRequestDelegate: delegate
                 )
                 
                 algorithms.apply(to: &server)

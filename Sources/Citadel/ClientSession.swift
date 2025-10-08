@@ -49,6 +49,7 @@ public struct SSHClientSettings: Sendable {
     public var group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton
     internal var channelHandlers: [ChannelHandler & Sendable] = []
     public var connectTimeout: TimeAmount = .seconds(30)
+    internal var inboundChildChannelInitializer: (@Sendable (Channel, SSHChannelType) -> EventLoopFuture<Void>)?
 
     public init(
         host: String,
@@ -123,7 +124,7 @@ final class SSHClientSession: Sendable {
                 NIOSSHHandler(
                     role: .client(clientConfiguration),
                     allocator: channel.allocator,
-                    inboundChildChannelInitializer: nil
+                    inboundChildChannelInitializer: settings.inboundChildChannelInitializer
                 ),
                 handshakeHandler
             )
@@ -159,7 +160,7 @@ final class SSHClientSession: Sendable {
                 NIOSSHHandler(
                     role: .client(clientConfiguration),
                     allocator: channel.allocator,
-                    inboundChildChannelInitializer: nil
+                    inboundChildChannelInitializer: settings.inboundChildChannelInitializer
                 ),
                 handshakeHandler
             ])
