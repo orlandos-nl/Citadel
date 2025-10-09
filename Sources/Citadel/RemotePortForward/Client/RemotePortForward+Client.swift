@@ -1,6 +1,7 @@
 import Foundation
 import NIO
 import NIOSSH
+import Logging
 
 /// A remote port forward represents an active port forward on the remote SSH server.
 ///
@@ -62,28 +63,28 @@ extension SSHClient {
         handler: @escaping @Sendable (Channel, SSHChannelType.ForwardedTCPIP) -> EventLoopFuture<Void>
     ) async throws -> SSHRemotePortForward {
         // Store the handler for incoming forwarded connections
-        NSLog("🔧 [Citadel] Setting forwardedTCPIPHandler on client")
+        logger.debug("Setting forwardedTCPIPHandler on client")
         self.forwardedTCPIPHandler = handler
-        NSLog("🔧 [Citadel] Handler set successfully, verifying: \(self.forwardedTCPIPHandler != nil ? "YES" : "NO")")
+        logger.debug("Handler set successfully", metadata: ["has_handler": "\(self.forwardedTCPIPHandler != nil)"])
 
-        return try await eventLoop.flatSubmit { [eventLoop, sshHandler = self.session.sshHandler] in
+        return try await eventLoop.flatSubmit { [eventLoop, sshHandler = self.session.sshHandler, logger = self.logger] in
             let responsePromise = eventLoop.makePromise(of: GlobalRequest.TCPForwardingResponse?.self)
 
-            NSLog("🔧 [Citadel] Sending TCP forwarding request: listen on \(host):\(port)")
+            logger.debug("Sending TCP forwarding request", metadata: ["host": "\(host)", "port": "\(port)"])
             sshHandler.value.sendTCPForwardingRequest(
                 .listen(host: host, port: port),
                 promise: responsePromise
             )
 
             return responsePromise.futureResult.flatMapThrowing { response in
-                NSLog("🔧 [Citadel] Received TCP forwarding response: \(String(describing: response))")
+                logger.trace("Received TCP forwarding response", metadata: ["response": "\(String(describing: response))"])
 
                 guard let response = response else {
-                    NSLog("❌ [Citadel] No response from server for TCP forwarding request")
+                    logger.error("No response from server for TCP forwarding request")
                     throw SSHClientError.channelCreationFailed
                 }
 
-                NSLog("✅ [Citadel] Server accepted port forward - boundPort: \(response.boundPort ?? port)")
+                logger.info("Server accepted port forward", metadata: ["bound_port": "\(response.boundPort ?? port)"])
 
                 return SSHRemotePortForward(
                     host: host,

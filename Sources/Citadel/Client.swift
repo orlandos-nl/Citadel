@@ -157,36 +157,39 @@ public final class SSHClient {
         for client: SSHClient
     ) -> (@Sendable (Channel, SSHChannelType) -> EventLoopFuture<Void>) {
         return { [weak client] channel, channelType in
-            NSLog("🔔 [Citadel] inboundChildChannelInitializer called! channelType: \(channelType)")
-
             guard let client = client else {
-                NSLog("❌ [Citadel] Client is nil in inboundChildChannelInitializer")
                 return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
             }
 
+            client.logger.trace("Inbound channel initializer called", metadata: ["channel_type": "\(channelType)"])
+
             switch channelType {
             case .forwardedTCPIP(let forwardedInfo):
-                NSLog("📥 [Citadel] Received forwardedTCPIP channel request from \(forwardedInfo.originatorAddress)")
+                client.logger.debug("Received forwardedTCPIP channel request", metadata: [
+                    "originator": "\(forwardedInfo.originatorAddress)",
+                    "listening_host": "\(forwardedInfo.listeningHost)",
+                    "listening_port": "\(forwardedInfo.listeningPort)"
+                ])
 
                 guard let handler = client.forwardedTCPIPHandler else {
-                    NSLog("❌ [Citadel] No forwardedTCPIPHandler set! Connection will be rejected.")
+                    client.logger.error("No forwardedTCPIPHandler set - rejecting connection")
                     return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
                 }
 
                 // Add DataToBufferCodec to unwrap SSHChannelData, just like DirectTCPIP does
-                NSLog("🔧 [Citadel] Adding DataToBufferCodec to channel pipeline")
+                client.logger.trace("Adding DataToBufferCodec to channel pipeline")
                 do {
                     try channel.pipeline.syncOperations.addHandler(DataToBufferCodec())
-                    NSLog("✅ [Citadel] DataToBufferCodec added, calling handler")
+                    client.logger.trace("DataToBufferCodec added successfully")
                 } catch {
-                    NSLog("❌ [Citadel] Failed to add DataToBufferCodec: \(error)")
+                    client.logger.error("Failed to add DataToBufferCodec", metadata: ["error": "\(error)"])
                     return channel.eventLoop.makeFailedFuture(error)
                 }
 
                 return handler(channel, forwardedInfo)
 
             default:
-                NSLog("⚠️ [Citadel] Unsupported channel type: \(channelType)")
+                client.logger.warning("Unsupported inbound channel type", metadata: ["channel_type": "\(channelType)"])
                 return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
             }
         }
