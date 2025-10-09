@@ -156,40 +156,42 @@ public final class SSHClient {
     private static func makeInboundChannelInitializer(
         for client: SSHClient
     ) -> (@Sendable (Channel, SSHChannelType) -> EventLoopFuture<Void>) {
+        let logger = Logger(label: "nl.orlandos.citadel.client.inbound-channel")
+
         return { [weak client] channel, channelType in
             guard let client = client else {
                 return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
             }
 
-            client.logger.trace("Inbound channel initializer called", metadata: ["channel_type": "\(channelType)"])
+            logger.trace("Inbound channel initializer called", metadata: ["channel_type": "\(channelType)"])
 
             switch channelType {
             case .forwardedTCPIP(let forwardedInfo):
-                client.logger.debug("Received forwardedTCPIP channel request", metadata: [
+                logger.debug("Received forwardedTCPIP channel request", metadata: [
                     "originator": "\(forwardedInfo.originatorAddress)",
                     "listening_host": "\(forwardedInfo.listeningHost)",
                     "listening_port": "\(forwardedInfo.listeningPort)"
                 ])
 
                 guard let handler = client.forwardedTCPIPHandler else {
-                    client.logger.error("No forwardedTCPIPHandler set - rejecting connection")
+                    logger.error("No forwardedTCPIPHandler set - rejecting connection")
                     return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
                 }
 
                 // Add DataToBufferCodec to unwrap SSHChannelData, just like DirectTCPIP does
-                client.logger.trace("Adding DataToBufferCodec to channel pipeline")
+                logger.trace("Adding DataToBufferCodec to channel pipeline")
                 do {
                     try channel.pipeline.syncOperations.addHandler(DataToBufferCodec())
-                    client.logger.trace("DataToBufferCodec added successfully")
+                    logger.trace("DataToBufferCodec added successfully")
                 } catch {
-                    client.logger.error("Failed to add DataToBufferCodec", metadata: ["error": "\(error)"])
+                    logger.error("Failed to add DataToBufferCodec", metadata: ["error": "\(error)"])
                     return channel.eventLoop.makeFailedFuture(error)
                 }
 
                 return handler(channel, forwardedInfo)
 
             default:
-                client.logger.warning("Unsupported inbound channel type", metadata: ["channel_type": "\(channelType)"])
+                logger.warning("Unsupported inbound channel type", metadata: ["channel_type": "\(channelType)"])
                 return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
             }
         }
