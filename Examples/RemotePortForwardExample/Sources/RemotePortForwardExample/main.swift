@@ -2,28 +2,97 @@ import Citadel
 import NIO
 import NIOSSH
 import Foundation
+import ArgumentParser
+import Crypto
 
 /// Example demonstrating remote port forwarding (reverse tunneling)
 ///
 /// This example shows how to:
 /// 1. Connect to an SSH server
-/// 2. Request the server to listen on port 8080
+/// 2. Request the server to listen on a remote port
 /// 3. Forward incoming connections to a local HTTP server
-///
-/// To test this example:
-/// 1. Start a local HTTP server: python3 -m http.server 3000
-/// 2. Run this example with your SSH credentials
-/// 3. The remote server will listen on port 8080
-/// 4. Connections to remote_host:8080 will be forwarded to localhost:3000
-
 @main
-struct RemotePortForwardExample {
-    static func main() async throws {
-        // Get SSH credentials from environment or use defaults
-        let host = ProcessInfo.processInfo.environment["SSH_HOST"] ?? "localhost"
-        let port = Int(ProcessInfo.processInfo.environment["SSH_PORT"] ?? "22") ?? 22
-        let username = ProcessInfo.processInfo.environment["SSH_USERNAME"] ?? "testuser"
-        let password = ProcessInfo.processInfo.environment["SSH_PASSWORD"] ?? "testpass"
+struct RemotePortForwardExample: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "remote-forward",
+        abstract: "Example demonstrating SSH remote port forwarding (reverse tunneling)",
+        discussion: """
+            This tool creates a reverse SSH tunnel, making a local service accessible through
+            a remote SSH server. When someone connects to the remote server's forwarded port,
+            the connection is tunneled back to your local machine.
+
+            Example usage:
+              1. Start a local HTTP server: python3 -m http.server 3000
+              2. Run this example to forward remote port 8080 to local port 3000
+              3. Connect to the remote server's port 8080 to access your local service
+            """
+    )
+
+    @Option(name: .shortAndLong, help: "SSH server hostname or IP address")
+    var host: String
+
+    @Option(name: .shortAndLong, help: "SSH server port")
+    var port: Int = 22
+
+    @Option(name: .shortAndLong, help: "SSH username")
+    var username: String
+
+    @Option(name: .long, help: "SSH password (⚠️ consider using SSH keys instead)")
+    var password: String?
+
+    @Option(name: .long, help: "Path to SSH private key file")
+    var privateKey: String?
+
+    @Option(name: .long, help: "Remote host to bind to (0.0.0.0 for all interfaces, localhost for loopback only)")
+    var remoteHost: String = "0.0.0.0"
+
+    @Option(name: .long, help: "Remote port to listen on (0 = server chooses)")
+    var remotePort: Int = 8080
+
+    @Option(name: .long, help: "Local host to forward connections to")
+    var localHost: String = "127.0.0.1"
+
+    @Option(name: .long, help: "Local port to forward connections to")
+    var localPort: Int = 3000
+
+    @Flag(name: .long, help: "Accept any host key (⚠️ insecure, only for testing)")
+    var insecure: Bool = false
+
+    func run() async throws {
+        // Validate authentication method
+        guard password != nil || privateKey != nil else {
+            throw ValidationError("Either --password or --private-key must be provided")
+        }
+
+        // Determine authentication method
+        let authMethod: SSHAuthenticationMethod
+        if let privateKeyPath = privateKey {
+            print("🔑 Using private key authentication from \(privateKeyPath)")
+            let keyData = try Data(contentsOf: URL(fileURLWithPath: privateKeyPath))
+            let privateKey = try Insecure.RSA.PrivateKey(sshRsa: keyData)
+            authMethod = .rsa(username: username, privateKey: privateKey)
+        } else if let password = password {
+            print("🔑 Using password authentication")
+            authMethod = .passwordBased(username: username, password: password)
+        } else {
+            fatalError("Unreachable")
+        }
+
+        // Capture values for use in the handler closure
+        let localHost = self.localHost
+        let localPort = self.localPort
+
+        // Validate host key validator
+        let hostKeyValidator: SSHHostKeyValidator
+        if insecure {
+            print("⚠️  WARNING: Accepting any host key (insecure mode)")
+            hostKeyValidator = .acceptAnything()
+        } else {
+            // In production, you would use proper host key validation
+            print("⚠️  WARNING: Using accept-anything host key validator")
+            print("   In production, use proper host key validation!")
+            hostKeyValidator = .acceptAnything()
+        }
 
         print("🔐 Connecting to SSH server at \(host):\(port) as \(username)...")
 
@@ -31,8 +100,8 @@ struct RemotePortForwardExample {
         let client = try await SSHClient.connect(
             host: host,
             port: port,
-            authenticationMethod: .passwordBased(username: username, password: password),
-            hostKeyValidator: .acceptAnything(), // ⚠️ Only for testing!
+            authenticationMethod: authMethod,
+            hostKeyValidator: hostKeyValidator,
             reconnect: .never
         )
 
@@ -43,52 +112,27 @@ struct RemotePortForwardExample {
         }
 
         print("✅ Connected to SSH server")
+        print("🌐 Requesting remote port forward on \(remoteHost):\(remotePort)...")
+        print("   Will forward connections to \(localHost):\(localPort)")
 
-        // Request remote port forwarding
-        // The server will listen on 0.0.0.0:8080 and forward connections to us
-        print("🌐 Requesting remote port forward on 0.0.0.0:8080...")
-
-        let forward = try await client.createRemotePortForward(
-            host: "0.0.0.0",
-            port: 8080
-        ) { forwardedChannel, forwardedInfo in
-            print("📥 Incoming connection from \(forwardedInfo.originatorAddress)")
-            print("   Connected to remote \(forwardedInfo.listeningHost):\(forwardedInfo.listeningPort)")
-
-            // For this simple example, just echo back a message
-            // In production, you would forward to a local service
-            let response = """
-            HTTP/1.1 200 OK\r
-            Content-Type: text/plain\r
-            Content-Length: 50\r
-            \r
-            Remote port forwarding is working! 🎉\r
-            \n
-            """
-
-            var buffer = forwardedChannel.allocator.buffer(capacity: response.utf8.count)
-            buffer.writeString(response)
-
-            return forwardedChannel.writeAndFlush(buffer).flatMap {
-                forwardedChannel.close()
-            }
-        }
+        // This automatically handles bidirectional forwarding
+        let forward = try await client.withRemotePortForward(
+            host: remoteHost,
+            port: remotePort,
+            forwardingTo: localHost,
+            port: localPort
+        )
 
         print("✅ Remote port forward established!")
-        print("   Server is listening on \(forward.host):\(forward.boundPort)")
-        print("   Connections will be forwarded to localhost:3000")
+        print("   Remote server is listening on \(forward.host):\(forward.boundPort)")
+        print("   Forwarding connections to \(localHost):\(localPort)")
         print("")
         print("💡 To test:")
-        print("   On the remote host, run: curl http://localhost:\(forward.boundPort)")
+        print("   curl http://\(host):\(forward.boundPort)")
         print("")
         print("Press Ctrl+C to stop...")
 
-        // Keep the program running
-        try await Task.sleep(nanoseconds: 3600 * 1_000_000_000)
-
-        // Cancel the forward when done
-        print("\n🛑 Canceling remote port forward...")
-        try await client.cancelRemotePortForward(forward)
-        print("✅ Remote port forward canceled")
+        // Keep the program running (the port forward is active for the lifetime of the client)
+        try await Task.sleep(nanoseconds: 365 * 24 * 3600 * 1_000_000_000) // 1 year
     }
 }

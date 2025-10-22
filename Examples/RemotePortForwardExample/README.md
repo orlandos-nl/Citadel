@@ -29,14 +29,17 @@ python3 -m http.server 3000
 # Terminal 2 - Run the remote port forward example
 cd Examples/RemotePortForwardExample
 
-# Set your SSH credentials
-export SSH_HOST="your-ssh-server.com"
-export SSH_PORT="22"
-export SSH_USERNAME="your-username"
-export SSH_PASSWORD="your-password"
+# Run with password authentication
+swift run remote-forward \
+  --host your-ssh-server.com \
+  --username your-username \
+  --password your-password
 
-# Run the example
-swift run
+# Or with SSH key authentication (recommended)
+swift run remote-forward \
+  --host your-ssh-server.com \
+  --username your-username \
+  --private-key ~/.ssh/id_rsa
 ```
 
 ### 3. Test the connection
@@ -80,6 +83,25 @@ print("Listening on remote port: \(forward.boundPort)")
 try await client.cancelRemotePortForward(forward)
 ```
 
+## Command-Line Options
+
+```bash
+swift run remote-forward --help
+```
+
+**Required options:**
+- `--host`, `-h`: SSH server hostname or IP address
+- `--username`, `-u`: SSH username
+- `--password` OR `--private-key`: Authentication credentials
+
+**Optional options:**
+- `--port`, `-p`: SSH server port (default: 22)
+- `--remote-host`: Remote host to bind to (default: 0.0.0.0)
+- `--remote-port`: Remote port to listen on (default: 8080, 0 = server chooses)
+- `--local-host`: Local host to forward connections to (default: 127.0.0.1)
+- `--local-port`: Local port to forward connections to (default: 3000)
+- `--insecure`: Accept any host key (⚠️ insecure, only for testing)
+
 ## Testing Without a Remote Server
 
 If you don't have a remote SSH server, you can test locally:
@@ -94,14 +116,13 @@ docker run -d -p 2222:2222 \
   -e PASSWORD_ACCESS=true \
   lscr.io/linuxserver/openssh-server:latest
 
-# Update environment variables
-export SSH_HOST="localhost"
-export SSH_PORT="2222"
-export SSH_USERNAME="testuser"
-export SSH_PASSWORD="testpass"
-
 # Run the example
-swift run
+swift run remote-forward \
+  --host localhost \
+  --port 2222 \
+  --username testuser \
+  --password testpass \
+  --insecure
 ```
 
 ### Option 2: Use local SSH server (macOS)
@@ -110,13 +131,12 @@ swift run
 # Enable SSH on macOS (if not already enabled)
 sudo systemsetup -setremotelogin on
 
-# Use your local machine
-export SSH_HOST="localhost"
-export SSH_PORT="22"
-export SSH_USERNAME="$(whoami)"
-export SSH_PASSWORD="your-mac-password"
-
-swift run
+# Run the example
+swift run remote-forward \
+  --host localhost \
+  --username $(whoami) \
+  --password your-mac-password \
+  --insecure
 ```
 
 ## Common Issues
@@ -152,7 +172,28 @@ let forward = try await client.createRemotePortForward(
 
 ## Advanced Usage
 
+### Custom port mappings
+
+```bash
+# Forward remote port 8080 to local service on port 5000
+swift run remote-forward \
+  --host ssh-server.com \
+  --username user \
+  --password pass \
+  --remote-port 8080 \
+  --local-port 5000
+
+# Let the server choose the remote port
+swift run remote-forward \
+  --host ssh-server.com \
+  --username user \
+  --password pass \
+  --remote-port 0
+```
+
 ### Forward to different local services based on the connection
+
+For advanced routing logic, modify the handler in the source code:
 
 ```swift
 let forward = try await client.createRemotePortForward(

@@ -129,4 +129,156 @@ extension SSHClient {
     public func cancelRemotePortForward(_ forward: SSHRemotePortForward) async throws {
         try await cancelRemotePortForward(host: forward.host, port: forward.boundPort)
     }
+
+    /// Establishes a remote port forward with a high-level NIOAsyncChannel-based API.
+    ///
+    /// This is a convenience method that wraps the low-level `createRemotePortForward` API
+    /// with modern async/await patterns using NIOAsyncChannel. The `onAccept` closure is called
+    /// for each incoming connection with a fully configured async channel.
+    ///
+    /// Example:
+    /// ```swift
+    /// try await client.withRemotePortForward(
+    ///     host: "0.0.0.0",
+    ///     port: 8080
+    /// ) { (channel: NIOAsyncChannel<ByteBuffer, ByteBuffer>) in
+    ///     // Handle each connection using structured concurrency
+    ///     try await channel.executeThenClose { inbound, outbound in
+    ///         for try await data in inbound {
+    ///             // Process and echo data
+    ///             try await outbound.write(data)
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - Important: This method will not return until the port forward is cancelled.
+    ///   The remote port forward remains active for the lifetime of the closure.
+    ///
+    /// - Parameters:
+    ///   - host: The host address to listen on. Use "0.0.0.0" or "" to listen on all interfaces.
+    ///   - port: The port to listen on. Use 0 to let the server choose a port.
+    ///   - configure: Optional closure to configure the channel pipeline before creating the NIOAsyncChannel.
+    ///   - onAccept: A closure called for each incoming connection with a NIOAsyncChannel.
+    /// - Returns: Information about the established port forward, including the actual bound port.
+    /// - Throws: If the server rejects the port forwarding request or if the request fails.
+    @discardableResult
+    public func withRemotePortForward<Inbound: Sendable, Outbound: Sendable>(
+        host: String,
+        port: Int,
+        configure: @escaping @Sendable (Channel) -> EventLoopFuture<Void> = { $0.eventLoop.makeSucceededVoidFuture() },
+        onAccept: @escaping @Sendable (NIOAsyncChannel<Inbound, Outbound>) async throws -> Void
+    ) async throws -> SSHRemotePortForward {
+        logger.debug("Setting up high-level remote port forward with NIOAsyncChannel", metadata: [
+            "host": "\(host)",
+            "port": "\(port)"
+        ])
+
+        return try await createRemotePortForward(host: host, port: port) { [logger = self.logger] channel, forwardedInfo in
+            logger.trace("Configuring NIOAsyncChannel for incoming connection", metadata: [
+                "originator": "\(forwardedInfo.originatorAddress)"
+            ])
+
+            // Configure the channel pipeline first
+            return configure(channel).flatMap {
+                do {
+                    // Create NIOAsyncChannel from the configured channel
+                    let asyncChannel = try NIOAsyncChannel<Inbound, Outbound>(
+                        wrappingChannelSynchronously: channel
+                    )
+
+                    // Handle the connection asynchronously
+                    Task {
+                        do {
+                            try await onAccept(asyncChannel)
+                        } catch {
+                            logger.error("Error in remote port forward connection handler", metadata: [
+                                "error": "\(error)"
+                            ])
+                        }
+                    }
+
+                    return channel.eventLoop.makeSucceededVoidFuture()
+                } catch {
+                    logger.error("Failed to create NIOAsyncChannel", metadata: [
+                        "error": "\(error)"
+                    ])
+                    return channel.eventLoop.makeFailedFuture(error)
+                }
+            }
+        }
+    }
+
+    /// Establishes a remote port forward and forwards connections to a local service.
+    ///
+    /// This is a high-level convenience method that automatically connects to a local service
+    /// and forwards data bidirectionally. This is the most common use case for remote port forwarding.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Forward remote port 8080 to local HTTP server on port 3000
+    /// try await client.withRemotePortForward(
+    ///     host: "0.0.0.0",
+    ///     port: 8080,
+    ///     forwardingTo: "127.0.0.1",
+    ///     port: 3000
+    /// )
+    /// ```
+    ///
+    /// - Important: This method will not return - it keeps the port forward active indefinitely.
+    ///   Cancel the task or close the client to stop forwarding.
+    ///
+    /// - Parameters:
+    ///   - host: The host address to listen on. Use "0.0.0.0" to listen on all interfaces.
+    ///   - port: The remote port to listen on. Use 0 to let the server choose a port.
+    ///   - localHost: The local host to forward connections to.
+    ///   - localPort: The local port to forward connections to.
+    /// - Returns: Information about the established port forward, including the actual bound port.
+    /// - Throws: If the server rejects the port forwarding request or if connection fails.
+    @discardableResult
+    public func withRemotePortForward(
+        host: String,
+        port: Int,
+        forwardingTo localHost: String,
+        port localPort: Int
+    ) async throws -> SSHRemotePortForward {
+        logger.info("Setting up remote port forward to local service", metadata: [
+            "remote_host": "\(host)",
+            "remote_port": "\(port)",
+            "local_host": "\(localHost)",
+            "local_port": "\(localPort)"
+        ])
+
+        return try await createRemotePortForward(host: host, port: port) { [logger = self.logger] forwardedChannel, forwardedInfo in
+            logger.debug("Incoming connection - connecting to local service", metadata: [
+                "originator": "\(forwardedInfo.originatorAddress)",
+                "local_target": "\(localHost):\(localPort)"
+            ])
+
+            // Connect to local service
+            return ClientBootstrap(group: forwardedChannel.eventLoop)
+                .connect(host: localHost, port: localPort)
+                .flatMap { localChannel in
+                    logger.trace("Connected to local service, setting up bidirectional forwarding")
+
+                    // Set up bidirectional forwarding using glue handlers
+                    let (forwardedToLocal, localToForwarded) = GlueHandler.matchedPair()
+
+                    return forwardedChannel.pipeline.addHandler(forwardedToLocal).flatMap {
+                        localChannel.pipeline.addHandler(localToForwarded)
+                    }.flatMap {
+                        // Start reading from both channels
+                        localChannel.read()
+                        forwardedChannel.read()
+                        return forwardedChannel.eventLoop.makeSucceededVoidFuture()
+                    }
+                }.flatMapError { error in
+                    logger.error("Failed to connect to local service", metadata: [
+                        "error": "\(error)",
+                        "local_target": "\(localHost):\(localPort)"
+                    ])
+                    return forwardedChannel.close()
+                }
+        }
+    }
 }

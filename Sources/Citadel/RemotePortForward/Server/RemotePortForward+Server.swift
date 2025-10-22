@@ -1,5 +1,6 @@
 import NIO
 import NIOSSH
+import Logging
 
 /// A delegate for handling remote port forwarding requests on the SSH server.
 ///
@@ -39,32 +40,70 @@ public protocol RemotePortForwardDelegate: Sendable {
     ) -> EventLoopFuture<Void>
 }
 
-/// A default implementation of RemotePortForwardDelegate that allows all forwarding requests.
+/// A high-level implementation of RemotePortForwardDelegate using NIOAsyncChannel.
 ///
-/// This delegate will bind to requested ports and forward incoming connections to the SSH client.
-/// Use this as a reference implementation or for testing purposes.
+/// This delegate uses modern async/await patterns to handle remote port forwarding requests.
+/// For each incoming connection, it creates a forwarded-tcpip channel back to the SSH client
+/// and invokes the provided handler closure.
 ///
-/// - Warning: This implementation allows forwarding to any port, which may be a security risk.
-///   In production, you should implement custom validation and restrictions.
-public struct DefaultRemotePortForwardDelegate: RemotePortForwardDelegate {
+/// Example:
+/// ```swift
+/// let delegate = AsyncRemotePortForwardDelegate { channel, clientAddress in
+///     // Handle each forwarded connection with async/await
+///     try await channel.executeThenClose { inbound, outbound in
+///         for try await data in inbound {
+///             // Process and forward data back to client
+///             try await outbound.write(data)
+///         }
+///     }
+/// }
+///
+/// server.enableRemotePortForward(withDelegate: delegate)
+/// ```
+/// Actor for managing active server channels in a thread-safe manner
+private actor ServerChannelStorage {
+    var servers: [String: Channel] = [:]
+
+    func store(_ channel: Channel, forKey key: String) {
+        servers[key] = channel
+    }
+
+    func remove(forKey key: String) -> Channel? {
+        servers.removeValue(forKey: key)
+    }
+}
+
+public final class AsyncRemotePortForwardDelegate: RemotePortForwardDelegate, Sendable {
     private let eventLoopGroup: EventLoopGroup
     private let allowedHosts: [String]?
     private let allowedPorts: [Int]?
+    private let logger: Logger
+    private let onAccept: @Sendable (NIOAsyncChannel<ByteBuffer, ByteBuffer>, SocketAddress) async throws -> Void
 
-    /// Creates a new default remote port forward delegate.
+    /// Active server channels, keyed by "host:port"
+    private let activeServers: ServerChannelStorage
+
+    /// Creates a new async remote port forward delegate.
     ///
     /// - Parameters:
     ///   - eventLoopGroup: The event loop group to use for listening sockets.
     ///   - allowedHosts: Optional whitelist of hosts that can be listened on. If nil, all hosts are allowed.
     ///   - allowedPorts: Optional whitelist of ports that can be listened on. If nil, all ports are allowed.
+    ///   - logger: Logger instance for structured logging.
+    ///   - onAccept: Closure called for each incoming connection with a NIOAsyncChannel.
     public init(
         eventLoopGroup: EventLoopGroup = MultiThreadedEventLoopGroup.singleton,
         allowedHosts: [String]? = nil,
-        allowedPorts: [Int]? = nil
+        allowedPorts: [Int]? = nil,
+        logger: Logger = Logger(label: "nl.orlandos.citadel.server.remote-forward"),
+        onAccept: @escaping @Sendable (NIOAsyncChannel<ByteBuffer, ByteBuffer>, SocketAddress) async throws -> Void
     ) {
         self.eventLoopGroup = eventLoopGroup
         self.allowedHosts = allowedHosts
         self.allowedPorts = allowedPorts
+        self.logger = logger
+        self.onAccept = onAccept
+        self.activeServers = ServerChannelStorage()
     }
 
     public func startListening(
@@ -76,42 +115,98 @@ public struct DefaultRemotePortForwardDelegate: RemotePortForwardDelegate {
     ) -> EventLoopFuture<Int?> {
         // Validate host
         if let allowedHosts = allowedHosts, !allowedHosts.contains(host) {
-            return eventLoop.makeSucceededFuture(nil as Int?)
+            logger.warning("Remote port forward request rejected - host not allowed", metadata: [
+                "host": "\(host)",
+                "port": "\(port)"
+            ])
+            return eventLoop.makeSucceededFuture(nil)
         }
 
         // Validate port
         if let allowedPorts = allowedPorts, port != 0, !allowedPorts.contains(port) {
-            return eventLoop.makeSucceededFuture(nil as Int?)
+            logger.warning("Remote port forward request rejected - port not allowed", metadata: [
+                "host": "\(host)",
+                "port": "\(port)"
+            ])
+            return eventLoop.makeSucceededFuture(nil)
         }
 
-        // Start listening on the requested host and port
-        let serverBootstrap = ServerBootstrap(group: eventLoopGroup)
-            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelInitializer { childChannel in
-                // For each incoming connection, we need to create a forwarded-tcpip channel
-                // back to the SSH client and pipe the data between them.
-                //
-                // Note: This is a simplified implementation. A production implementation
-                // would need to track these channels and close them properly.
-                childChannel.eventLoop.makeSucceededFuture(())
-            }
+        logger.debug("Starting remote port forward listener", metadata: [
+            "host": "\(host)",
+            "port": "\(port)"
+        ])
 
         let bindHost = host.isEmpty || host == "0.0.0.0" ? "0.0.0.0" : host
         let bindPort = port == 0 ? 0 : port
 
-        return serverBootstrap.bind(host: bindHost, port: bindPort).flatMap { serverChannel in
-            // Get the actual bound port
-            guard let actualPort = serverChannel.localAddress?.port else {
-                _ = serverChannel.close()
-                return eventLoop.makeSucceededFuture(nil as Int?)
+        let logger = self.logger
+        let onAccept = self.onAccept
+
+        // Create server using traditional ServerBootstrap pattern
+        let serverBootstrap = ServerBootstrap(group: eventLoopGroup)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { channel in
+                // Setup pipeline for each incoming connection
+                channel.eventLoop.makeCompletedFuture {
+                    // Create async channel for the incoming connection
+                    let asyncChannel = try NIOAsyncChannel<ByteBuffer, ByteBuffer>(
+                        wrappingChannelSynchronously: channel
+                    )
+
+                    // Get the remote address
+                    guard let remoteAddress = channel.remoteAddress else {
+                        logger.warning("Incoming connection has no remote address")
+                        return
+                    }
+
+                    logger.debug("Accepting forwarded connection", metadata: [
+                        "remote_address": "\(remoteAddress)"
+                    ])
+
+                    // Handle the connection asynchronously
+                    Task {
+                        do {
+                            try await onAccept(asyncChannel, remoteAddress)
+                        } catch {
+                            logger.error("Error handling forwarded connection", metadata: [
+                                "error": "\(error)",
+                                "remote_address": "\(remoteAddress)"
+                            ])
+                        }
+                    }
+                }
             }
 
-            // Return the bound port
-            return eventLoop.makeSucceededFuture(Int(actualPort) as Int?)
-        }.flatMapError { error in
-            // If binding failed, reject the request
-            return eventLoop.makeSucceededFuture(nil as Int?)
-        }
+        return serverBootstrap.bind(host: bindHost, port: bindPort)
+            .flatMap { serverChannel in
+                // Get the actual bound port
+                guard let actualPort = serverChannel.localAddress?.port else {
+                    logger.error("Server channel has no local address")
+                    _ = serverChannel.close()
+                    return eventLoop.makeSucceededFuture(nil as Int?)
+                }
+
+                // Store the server channel for later cleanup
+                let key = "\(host):\(actualPort)"
+                Task {
+                    await self.activeServers.store(serverChannel, forKey: key)
+                }
+
+                logger.info("Remote port forward listener started", metadata: [
+                    "host": "\(host)",
+                    "bound_port": "\(actualPort)"
+                ])
+
+                return eventLoop.makeSucceededFuture(Int(actualPort))
+            }
+            .flatMapError { error in
+                logger.error("Failed to bind remote port forward listener", metadata: [
+                    "error": "\(error)",
+                    "host": "\(bindHost)",
+                    "port": "\(bindPort)"
+                ])
+                return eventLoop.makeSucceededFuture(nil as Int?)
+            }
     }
 
     public func stopListening(
@@ -120,8 +215,40 @@ public struct DefaultRemotePortForwardDelegate: RemotePortForwardDelegate {
         eventLoop: EventLoop,
         context: SSHContext
     ) -> EventLoopFuture<Void> {
-        // Note: This is a simplified implementation. A production implementation
-        // would need to track active listeners and close them.
-        return eventLoop.makeSucceededFuture(())
+        let key = "\(host):\(port)"
+
+        logger.debug("Stopping remote port forward listener", metadata: [
+            "host": "\(host)",
+            "port": "\(port)"
+        ])
+
+        let promise = eventLoop.makePromise(of: Void.self)
+
+        Task {
+            let serverChannel = await self.activeServers.remove(forKey: key)
+
+            if let serverChannel = serverChannel {
+                serverChannel.close().whenComplete { result in
+                    switch result {
+                    case .success:
+                        self.logger.info("Remote port forward listener stopped", metadata: [
+                            "host": "\(host)",
+                            "port": "\(port)"
+                        ])
+                        promise.succeed(())
+                    case .failure(let error):
+                        promise.fail(error)
+                    }
+                }
+            } else {
+                self.logger.warning("No active listener found to stop", metadata: [
+                    "host": "\(host)",
+                    "port": "\(port)"
+                ])
+                promise.succeed(())
+            }
+        }
+
+        return promise.futureResult
     }
 }

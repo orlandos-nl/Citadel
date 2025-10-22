@@ -7,12 +7,16 @@ let package = Package(
         .macOS(.v12)
     ],
     dependencies: [
-        .package(name: "Citadel", path: "../..")
+        .package(name: "Citadel", path: "../.."),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.2.0")
     ],
     targets: [
         .executableTarget(
             name: "RemotePortForwardExample",
-            dependencies: ["Citadel"]
+            dependencies: [
+                "Citadel",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
         )
     ]
 )
