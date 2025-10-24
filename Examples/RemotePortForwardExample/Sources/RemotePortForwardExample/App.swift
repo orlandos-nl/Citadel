@@ -116,23 +116,24 @@ struct RemotePortForwardExample: AsyncParsableCommand {
         print("   Will forward connections to \(localHost):\(localPort)")
 
         // This automatically handles bidirectional forwarding
-        let forward = try await client.withRemotePortForward(
+        try await client.runRemotePortForward(
             host: remoteHost,
             port: remotePort,
             forwardingTo: localHost,
             port: localPort
-        )
+        ) { forward in
+            print("✅ Remote port forward established!")
+            print("   Remote server is listening on \(forward.host):\(forward.boundPort)")
+            print("   Forwarding connections to \(localHost):\(localPort)")
+            print("")
+            print("💡 To test:")
+            print("   curl http://\(host):\(forward.boundPort)")
+            print("")
 
-        print("✅ Remote port forward established!")
-        print("   Remote server is listening on \(forward.host):\(forward.boundPort)")
-        print("   Forwarding connections to \(localHost):\(localPort)")
-        print("")
-        print("💡 To test:")
-        print("   curl http://\(host):\(forward.boundPort)")
-        print("")
-        print("Press Ctrl+C to stop...")
+            print("Press Ctrl+C to stop...")
+        }
 
-        // Keep the program running (the port forward is active for the lifetime of the client)
-        try await Task.sleep(nanoseconds: 365 * 24 * 3600 * 1_000_000_000) // 1 year
+        // Keep the program running
+        try await Task.sleep(nanoseconds: .max)
     }
 }

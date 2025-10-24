@@ -7,7 +7,7 @@ import Logging
 ///
 /// When the remote server receives connections on the forwarded port, they will be
 /// forwarded to this client through "forwarded-tcpip" channels.
-public struct SSHRemotePortForward: Sendable {
+public struct SSHRemotePortForward: Sendable, Hashable {
     /// The host address being listened on by the remote server.
     public let host: String
 
@@ -56,42 +56,56 @@ extension SSHClient {
     ///   - handler: A closure that will be called for each incoming forwarded connection. The closure receives the channel and forwarding details.
     /// - Returns: Information about the established port forward, including the actual bound port.
     /// - Throws: If the server rejects the port forwarding request or if the request fails.
-    @discardableResult
-    public func createRemotePortForward(
+    public func withRemotePortForward(
         host: String,
         port: Int,
-        handler: @escaping @Sendable (Channel, SSHChannelType.ForwardedTCPIP) -> EventLoopFuture<Void>
-    ) async throws -> SSHRemotePortForward {
-        // Store the handler for incoming forwarded connections
-        logger.debug("Setting forwardedTCPIPHandler on client")
-        self.forwardedTCPIPHandler = handler
-        logger.debug("Handler set successfully", metadata: ["has_handler": "\(self.forwardedTCPIPHandler != nil)"])
+        onOpen: @escaping @Sendable (SSHRemotePortForward) async throws -> Void,
+        handleChannel: @escaping @Sendable (Channel, SSHChannelType.ForwardedTCPIP) -> EventLoopFuture<Void>
+    ) async throws {
+        let result = session.inboundChannelHandler.registerForwardedTCPIP(
+            host: host,
+            port: port,
+            handler: handleChannel
+        )
 
-        return try await eventLoop.flatSubmit { [eventLoop, sshHandler = self.session.sshHandler, logger = self.logger] in
-            let responsePromise = eventLoop.makePromise(of: GlobalRequest.TCPForwardingResponse?.self)
+        switch result {
+        case .success:
+            ()
+        case .alreadyRegistered:
+            throw SSHClientError.channelCreationFailed
+        }
 
-            logger.debug("Sending TCP forwarding request", metadata: ["host": "\(host)", "port": "\(port)"])
-            sshHandler.value.sendTCPForwardingRequest(
+        defer { session.inboundChannelHandler.unregisterForwardedTCPIP(host: host, port: port) }
+
+        let response = try await eventLoop.flatSubmit {
+            let responsePromise = self.eventLoop.makePromise(of: GlobalRequest.TCPForwardingResponse?.self)
+            self.logger.debug("Sending TCP forwarding request", metadata: ["host": "\(host)", "port": "\(port)"])
+            self.session.sshHandler.value.sendTCPForwardingRequest(
                 .listen(host: host, port: port),
                 promise: responsePromise
             )
-
-            return responsePromise.futureResult.flatMapThrowing { response in
-                logger.trace("Received TCP forwarding response", metadata: ["response": "\(String(describing: response))"])
-
-                guard let response = response else {
-                    logger.error("No response from server for TCP forwarding request")
-                    throw SSHClientError.channelCreationFailed
-                }
-
-                logger.info("Server accepted port forward", metadata: ["bound_port": "\(response.boundPort ?? port)"])
-
-                return SSHRemotePortForward(
-                    host: host,
-                    boundPort: response.boundPort ?? port
-                )
-            }
+            return responsePromise.futureResult
         }.get()
+
+        guard let response = response else {
+            logger.error("No response from server for TCP forwarding request")
+            throw SSHClientError.channelCreationFailed
+        }
+
+        logger.info("Server accepted port forward", metadata: ["bound_port": "\(response.boundPort ?? port)"])
+
+        // Sleep until cancelled
+        do {
+            try await onOpen(SSHRemotePortForward(host: host, boundPort: response.boundPort ?? port))
+            while !Task.isCancelled {
+                try await Task.sleep(for: .seconds(100_000))
+            }
+
+            try await sendTCPIPForwardingCancellationRequest(host: host, port: port)
+        } catch {
+            try await sendTCPIPForwardingCancellationRequest(host: host, port: port)
+            throw error
+        }
     }
 
     /// Cancels a previously established remote port forward.
@@ -103,7 +117,7 @@ extension SSHClient {
     ///   - host: The host address that was being listened on.
     ///   - port: The port that was being listened on.
     /// - Throws: If the server rejects the cancellation request or if the request fails.
-    public func cancelRemotePortForward(
+    private func sendTCPIPForwardingCancellationRequest(
         host: String,
         port: Int
     ) async throws {
@@ -117,17 +131,6 @@ extension SSHClient {
 
             return responsePromise.futureResult.map { _ in () }
         }.get()
-    }
-
-    /// Cancels a previously established remote port forward using the SSHRemotePortForward object.
-    ///
-    /// This tells the SSH server to stop listening on the specified host and port.
-    /// Any existing forwarded connections will continue to work, but no new connections will be accepted.
-    ///
-    /// - Parameter forward: The remote port forward to cancel.
-    /// - Throws: If the server rejects the cancellation request or if the request fails.
-    public func cancelRemotePortForward(_ forward: SSHRemotePortForward) async throws {
-        try await cancelRemotePortForward(host: forward.host, port: forward.boundPort)
     }
 
     /// Establishes a remote port forward with a high-level NIOAsyncChannel-based API.
@@ -162,50 +165,60 @@ extension SSHClient {
     ///   - onAccept: A closure called for each incoming connection with a NIOAsyncChannel.
     /// - Returns: Information about the established port forward, including the actual bound port.
     /// - Throws: If the server rejects the port forwarding request or if the request fails.
-    @discardableResult
     public func withRemotePortForward<Inbound: Sendable, Outbound: Sendable>(
         host: String,
         port: Int,
+        inboundType: Inbound.Type = ByteBuffer.self,
+        outboundType: Outbound.Type = ByteBuffer.self,
         configure: @escaping @Sendable (Channel) -> EventLoopFuture<Void> = { $0.eventLoop.makeSucceededVoidFuture() },
+        onOpen: @escaping @Sendable (SSHRemotePortForward) async throws -> Void = { _ in },
         onAccept: @escaping @Sendable (NIOAsyncChannel<Inbound, Outbound>) async throws -> Void
-    ) async throws -> SSHRemotePortForward {
+    ) async throws {
         logger.debug("Setting up high-level remote port forward with NIOAsyncChannel", metadata: [
             "host": "\(host)",
             "port": "\(port)"
         ])
 
-        return try await createRemotePortForward(host: host, port: port) { [logger = self.logger] channel, forwardedInfo in
-            logger.trace("Configuring NIOAsyncChannel for incoming connection", metadata: [
-                "originator": "\(forwardedInfo.originatorAddress)"
-            ])
+        let (newClients, continuation) = AsyncStream<NIOAsyncChannel<Inbound, Outbound>>.makeStream()
 
-            // Configure the channel pipeline first
-            return configure(channel).flatMap {
-                do {
-                    // Create NIOAsyncChannel from the configured channel
-                    let asyncChannel = try NIOAsyncChannel<Inbound, Outbound>(
-                        wrappingChannelSynchronously: channel
-                    )
-
-                    // Handle the connection asynchronously
-                    Task {
-                        do {
-                            try await onAccept(asyncChannel)
-                        } catch {
-                            logger.error("Error in remote port forward connection handler", metadata: [
-                                "error": "\(error)"
-                            ])
-                        }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                return try await self.withRemotePortForward(
+                    host: host,
+                    port: port,
+                    onOpen: onOpen
+                 ) { channel, _ in
+                    return configure(channel).flatMapThrowing {
+                        let channel = try NIOAsyncChannel<Inbound, Outbound>(
+                            wrappingChannelSynchronously: channel
+                        )
+                        continuation.yield(channel)
                     }
-
-                    return channel.eventLoop.makeSucceededVoidFuture()
-                } catch {
-                    logger.error("Failed to create NIOAsyncChannel", metadata: [
-                        "error": "\(error)"
-                    ])
-                    return channel.eventLoop.makeFailedFuture(error)
                 }
             }
+
+            group.addTask {
+                await withDiscardingTaskGroup { group in
+                    for await client in newClients {
+                        group.addTask {
+                            do {
+                                try await onAccept(client)
+                            } catch {
+                                self.logger.error("Error in remote port forwarded connection", metadata: [
+                                    "error": "\(error)"
+                                ])
+                            }
+                        }
+                    }
+                }
+            }
+
+            defer { 
+                continuation.finish()
+                group.cancelAll()
+            }
+
+            try await group.next()
         }
     }
 
@@ -236,49 +249,47 @@ extension SSHClient {
     /// - Returns: Information about the established port forward, including the actual bound port.
     /// - Throws: If the server rejects the port forwarding request or if connection fails.
     @discardableResult
-    public func withRemotePortForward(
+    public func runRemotePortForward(
         host: String,
         port: Int,
         forwardingTo localHost: String,
-        port localPort: Int
-    ) async throws -> SSHRemotePortForward {
-        logger.info("Setting up remote port forward to local service", metadata: [
-            "remote_host": "\(host)",
-            "remote_port": "\(port)",
-            "local_host": "\(localHost)",
-            "local_port": "\(localPort)"
-        ])
-
-        return try await createRemotePortForward(host: host, port: port) { [logger = self.logger] forwardedChannel, forwardedInfo in
-            logger.debug("Incoming connection - connecting to local service", metadata: [
-                "originator": "\(forwardedInfo.originatorAddress)",
-                "local_target": "\(localHost):\(localPort)"
-            ])
-
-            // Connect to local service
-            return ClientBootstrap(group: forwardedChannel.eventLoop)
+        port localPort: Int,
+        onOpen: @escaping @Sendable (SSHRemotePortForward) async throws -> Void = { _ in },
+    ) async throws {
+        try await withRemotePortForward(
+            host: host,
+            port: port,
+            onOpen: onOpen
+         ) { inboundClient in
+            let outboundClient = try await ClientBootstrap(group: inboundClient.channel.eventLoop)
                 .connect(host: localHost, port: localPort)
-                .flatMap { localChannel in
-                    logger.trace("Connected to local service, setting up bidirectional forwarding")
-
-                    // Set up bidirectional forwarding using glue handlers
-                    let (forwardedToLocal, localToForwarded) = GlueHandler.matchedPair()
-
-                    return forwardedChannel.pipeline.addHandler(forwardedToLocal).flatMap {
-                        localChannel.pipeline.addHandler(localToForwarded)
-                    }.flatMap {
-                        // Start reading from both channels
-                        localChannel.read()
-                        forwardedChannel.read()
-                        return forwardedChannel.eventLoop.makeSucceededVoidFuture()
-                    }
-                }.flatMapError { error in
-                    logger.error("Failed to connect to local service", metadata: [
-                        "error": "\(error)",
-                        "local_target": "\(localHost):\(localPort)"
-                    ])
-                    return forwardedChannel.close()
+                .flatMapThrowing { channel in
+                    let channel = try NIOAsyncChannel<ByteBuffer, ByteBuffer>(
+                        wrappingChannelSynchronously: channel
+                    )
+                    return channel
                 }
+                .get()
+            
+            try await inboundClient.executeThenClose { inboundA, outboundA in
+                try await outboundClient.executeThenClose { inboundB, outboundB in
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        group.addTask {
+                            for try await data in inboundA {
+                                try await outboundB.write(data)
+                            }
+                        }
+                        group.addTask {
+                            for try await data in inboundB {
+                                try await outboundA.write(data)
+                            }
+                        }
+
+                        defer { group.cancelAll() }
+                        try await group.next()
+                    }
+                }
+            }
         }
     }
 }

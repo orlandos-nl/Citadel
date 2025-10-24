@@ -2,6 +2,66 @@ import NIO
 @preconcurrency import NIOSSH
 import Logging
 import NIOConcurrencyHelpers
+import Synchronization
+
+final class SSHClientInboundChannelHandler: Sendable {
+    typealias TCPIPForwardHandler = @Sendable (Channel, SSHChannelType.ForwardedTCPIP) -> EventLoopFuture<Void>
+    let forwardedTCPIPHosts = NIOLockedValueBox(
+        [SSHRemotePortForward: TCPIPForwardHandler]()
+    )
+
+    init() {}
+
+    enum HandleRegistrationResult: Error {
+        case success
+        case alreadyRegistered
+    }
+
+    nonisolated func registerForwardedTCPIP(host: String, port: Int, handler: @escaping TCPIPForwardHandler) -> HandleRegistrationResult {
+        let bound = SSHRemotePortForward(
+            host: host,
+            boundPort: port
+        )
+        return forwardedTCPIPHosts.withLockedValue { hosts in
+            if hosts.keys.contains(bound) {
+                return .alreadyRegistered
+            }
+            hosts[bound] = handler
+            return .success
+        }
+    }
+
+    nonisolated func unregisterForwardedTCPIP(host: String, port: Int) {
+        let bound = SSHRemotePortForward(
+            host: host,
+            boundPort: port
+        )
+        forwardedTCPIPHosts.withLockedValue { hosts in
+            _ = hosts.removeValue(forKey: bound)
+        }
+    }
+
+    nonisolated func handleChannel(channel: Channel, channelType: SSHChannelType) -> EventLoopFuture<Void> {
+        switch channelType {
+        case .session:
+            return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
+        case .directTCPIP:
+            return channel.eventLoop.makeFailedFuture(CitadelError.unsupported)
+        case .forwardedTCPIP(let forwardedTCPIP):
+            return forwardedTCPIPHosts.withLockedValue { hosts in
+                let bound = SSHRemotePortForward(
+                    host: forwardedTCPIP.listeningHost,
+                    boundPort: forwardedTCPIP.listeningPort
+                )
+                guard let host = hosts[bound] else {
+                    return channel.eventLoop.makeFailedFuture(CitadelError.channelCreationFailed)
+                }
+
+                return host(channel, forwardedTCPIP)
+            }
+        }
+    }
+}
 
 final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Any
@@ -49,7 +109,6 @@ public struct SSHClientSettings: Sendable {
     public var group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton
     internal var channelHandlers: [ChannelHandler & Sendable] = []
     public var connectTimeout: TimeAmount = .seconds(30)
-    internal var inboundChildChannelInitializer: (@Sendable (Channel, SSHChannelType) -> EventLoopFuture<Void>)?
 
     public init(
         host: String,
@@ -67,9 +126,11 @@ public struct SSHClientSettings: Sendable {
 final class SSHClientSession: Sendable {
     let channel: Channel
     let sshHandler: NIOLoopBoundBox<NIOSSHHandler>
+    let inboundChannelHandler: SSHClientInboundChannelHandler
     
-    init(channel: Channel, sshHandler: NIOSSHHandler) {
+    init(channel: Channel, inboundChannelHandler: SSHClientInboundChannelHandler, sshHandler: NIOSSHHandler) {
         self.channel = channel
+        self.inboundChannelHandler = inboundChannelHandler
         self.sshHandler = NIOLoopBoundBox(sshHandler, eventLoop: channel.eventLoop)
     }
     
@@ -82,12 +143,14 @@ final class SSHClientSession: Sendable {
     static func addHandlers(
         on channel: Channel,
         authenticationMethod: @escaping @Sendable @autoclosure () -> SSHAuthenticationMethod,
+        inboundChannelHandler: SSHClientInboundChannelHandler,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) -> EventLoopFuture<Void> {
         addHandlers(
             on: channel,
+            inboundChannelHandler: SSHClientInboundChannelHandler(),
             settings: SSHClientSettings(
                 host: "127.0.0.1",
                 port: 22,
@@ -102,6 +165,7 @@ final class SSHClientSession: Sendable {
     /// - settings: The settings to use for the SSH session.
     static func addHandlers(
         on channel: Channel,
+        inboundChannelHandler: SSHClientInboundChannelHandler,
         settings: SSHClientSettings
     ) -> EventLoopFuture<Void> {
         let handshakeHandler = ClientHandshakeHandler(
@@ -124,7 +188,9 @@ final class SSHClientSession: Sendable {
                 NIOSSHHandler(
                     role: .client(clientConfiguration),
                     allocator: channel.allocator,
-                    inboundChildChannelInitializer: settings.inboundChildChannelInitializer
+                    inboundChildChannelInitializer: { channel, channelType in
+                        return inboundChannelHandler.handleChannel(channel: channel, channelType: channelType)
+                    }
                 ),
                 handshakeHandler
             )
@@ -140,10 +206,7 @@ final class SSHClientSession: Sendable {
         settings: SSHClientSettings
     ) async throws -> SSHClientSession {
         let eventLoop = settings.group.any()
-        let handshakeHandler = ClientHandshakeHandler(
-            eventLoop: eventLoop,
-            loginTimeout: .seconds(10)
-        )
+        let inboundChannelHandler = SSHClientInboundChannelHandler()
         var clientConfiguration = SSHClientConfiguration(
             userAuthDelegate: settings.authenticationMethod(),
             serverAuthDelegate: settings.hostKeyValidator
@@ -156,14 +219,7 @@ final class SSHClientSession: Sendable {
         }
         
         let bootstrap = ClientBootstrap(group: eventLoop).channelInitializer { channel in
-            channel.pipeline.addHandlers(settings.channelHandlers + [
-                NIOSSHHandler(
-                    role: .client(clientConfiguration),
-                    allocator: channel.allocator,
-                    inboundChildChannelInitializer: settings.inboundChildChannelInitializer
-                ),
-                handshakeHandler
-            ])
+            return Self.addHandlers(on: channel, inboundChannelHandler: inboundChannelHandler, settings: settings)
         }
         .connectTimeout(settings.connectTimeout)
 //        .channelOption(ChannelOptions.autoRead, value: true)
@@ -171,10 +227,12 @@ final class SSHClientSession: Sendable {
         .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
         
         return try await bootstrap.connect(host: settings.host, port: settings.port).flatMap { channel in
-            return handshakeHandler.authenticated.flatMap {
+            channel.pipeline.handler(type: ClientHandshakeHandler.self).flatMap { handshakeHandler in
+                handshakeHandler.authenticated
+            }.flatMap {
                 channel.pipeline.handler(type: NIOSSHHandler.self)
             }.map { sshHandler in
-                SSHClientSession(channel: channel, sshHandler: sshHandler)
+                SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
             }
         }.get()
     }

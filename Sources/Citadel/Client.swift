@@ -1,4 +1,3 @@
-import Foundation
 import NIO
 import Crypto
 import Logging
@@ -111,7 +110,7 @@ public struct SSHAlgorithms: Sendable {
 
 /// Represents an SSH connection.
 public final class SSHClient {
-    private(set) var session: SSHClientSession!
+    private(set) var session: SSHClientSession
     private var userInitiatedClose = false
     let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
@@ -120,18 +119,17 @@ public final class SSHClient {
     private let protocolOptions: Set<SSHProtocolOption>
     private var onDisconnect: (@Sendable () -> ())?
     public let logger = Logger(label: "nl.orlandos.citadel.client")
-    internal var forwardedTCPIPHandler: (@Sendable (Channel, SSHChannelType.ForwardedTCPIP) -> EventLoopFuture<Void>)?
     public var isConnected: Bool {
-        session?.channel.isActive ?? false
+        session.channel.isActive
     }
-
+    
     /// The event loop that this SSH connection is running on.
     public var eventLoop: EventLoop {
         session.channel.eventLoop
     }
-
+    
     init(
-        session: SSHClientSession?,
+        session: SSHClientSession,
         authenticationMethod: @escaping @autoclosure () -> SSHAuthenticationMethod,
         hostKeyValidator: SSHHostKeyValidator,
         algorithms: SSHAlgorithms = SSHAlgorithms(),
@@ -142,59 +140,12 @@ public final class SSHClient {
         self.hostKeyValidator = hostKeyValidator
         self.algorithms = algorithms
         self.protocolOptions = protocolOptions
-
-        if let session = session {
-            onNewSession(session)
-        }
+        
+        onNewSession(session)
     }
     
     public func onDisconnect(perform onDisconnect: @escaping @Sendable () -> ()) {
         self.onDisconnect = onDisconnect
-    }
-
-    /// Helper to create the inbound channel initializer for handling forwarded-tcpip channels
-    private static func makeInboundChannelInitializer(
-        for client: SSHClient
-    ) -> (@Sendable (Channel, SSHChannelType) -> EventLoopFuture<Void>) {
-        let logger = Logger(label: "nl.orlandos.citadel.client.inbound-channel")
-
-        return { [weak client] channel, channelType in
-            guard let client = client else {
-                return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
-            }
-
-            logger.trace("Inbound channel initializer called", metadata: ["channel_type": "\(channelType)"])
-
-            switch channelType {
-            case .forwardedTCPIP(let forwardedInfo):
-                logger.debug("Received forwardedTCPIP channel request", metadata: [
-                    "originator": "\(forwardedInfo.originatorAddress)",
-                    "listening_host": "\(forwardedInfo.listeningHost)",
-                    "listening_port": "\(forwardedInfo.listeningPort)"
-                ])
-
-                guard let handler = client.forwardedTCPIPHandler else {
-                    logger.error("No forwardedTCPIPHandler set - rejecting connection")
-                    return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
-                }
-
-                // Add DataToBufferCodec to unwrap SSHChannelData, just like DirectTCPIP does
-                logger.trace("Adding DataToBufferCodec to channel pipeline")
-                do {
-                    try channel.pipeline.syncOperations.addHandler(DataToBufferCodec())
-                    logger.trace("DataToBufferCodec added successfully")
-                } catch {
-                    logger.error("Failed to add DataToBufferCodec", metadata: ["error": "\(error)"])
-                    return channel.eventLoop.makeFailedFuture(error)
-                }
-
-                return handler(channel, forwardedInfo)
-
-            default:
-                logger.warning("Unsupported inbound channel type", metadata: ["channel_type": "\(channelType)"])
-                return channel.eventLoop.makeFailedFuture(SSHClientError.channelCreationFailed)
-            }
-        }
     }
 
     /// Connects to an SSH server.
@@ -203,23 +154,15 @@ public final class SSHClient {
     public static func connect(
         to settings: SSHClientSettings
     ) async throws -> SSHClient {
-        var modifiedSettings = settings
-        let client = SSHClient(
-            session: nil,
+        let session = try await SSHClientSession.connect(settings: settings)
+        
+        return SSHClient(
+            session: session,
             authenticationMethod: settings.authenticationMethod(),
             hostKeyValidator: settings.hostKeyValidator,
             algorithms: settings.algorithms,
             protocolOptions: settings.protocolOptions
         )
-
-        // Setup the inbound channel initializer to handle forwarded-tcpip channels
-        modifiedSettings.inboundChildChannelInitializer = makeInboundChannelInitializer(for: client)
-
-        let session = try await SSHClientSession.connect(settings: modifiedSettings)
-        client.session = session
-        client.onNewSession(session)
-
-        return client
     }
 
     /// Connects to an SSH server.
@@ -229,49 +172,31 @@ public final class SSHClient {
         on channel: Channel,
         settings: SSHClientSettings
     ) async throws -> SSHClient {
-        var modifiedSettings = settings
-        let client = SSHClient(
-            session: nil,
-            authenticationMethod: settings.authenticationMethod(),
-            hostKeyValidator: settings.hostKeyValidator,
-            algorithms: settings.algorithms,
-            protocolOptions: settings.protocolOptions
-        )
-
-        // Setup the inbound channel initializer to handle forwarded-tcpip channels
-        modifiedSettings.inboundChildChannelInitializer = makeInboundChannelInitializer(for: client)
-
+        let inboundChannelHandler = SSHClientInboundChannelHandler()
         try await SSHClientSession.addHandlers(
             on: channel,
-            settings: modifiedSettings
+            inboundChannelHandler: inboundChannelHandler,
+            settings: settings
         ).get()
-
+        
         let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
         let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
         let session = try await handshakeHandler.authenticated.map {
-            SSHClientSession(channel: channel, sshHandler: sshHandler)
+            SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
         }.get()
 
-        client.session = session
-        client.onNewSession(session)
-
-        return client
-    }
-
-    public func jump(to settings: SSHClientSettings) async throws -> SSHClient {
-        var modifiedSettings = settings
-        let client = SSHClient(
-            session: nil,
+        return SSHClient(
+            session: session,
             authenticationMethod: settings.authenticationMethod(),
             hostKeyValidator: settings.hostKeyValidator,
             algorithms: settings.algorithms,
             protocolOptions: settings.protocolOptions
         )
+    }
 
-        // Setup the inbound channel initializer to handle forwarded-tcpip channels
-        modifiedSettings.inboundChildChannelInitializer = SSHClient.makeInboundChannelInitializer(for: client)
-
+    public func jump(to settings: SSHClientSettings) async throws -> SSHClient {
         let originatorAddress = try SocketAddress(ipAddress: "fe80::1", port: 22)
+        let inboundChannelHandler = SSHClientInboundChannelHandler()
         let channel = try await self.createDirectTCPIPChannel(
             using: SSHChannelType.DirectTCPIP(
                 targetHost: settings.host,
@@ -281,20 +206,24 @@ public final class SSHClient {
         ) { channel in
             SSHClientSession.addHandlers(
                 on: channel,
-                settings: modifiedSettings
+                inboundChannelHandler: inboundChannelHandler,
+                settings: settings
             )
         }
-
+        
         let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
         let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
         let session = try await handshakeHandler.authenticated.map {
-            SSHClientSession(channel: channel, sshHandler: sshHandler)
+            SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
         }.get()
 
-        client.session = session
-        client.onNewSession(session)
-
-        return client
+        return SSHClient(
+            session: session,
+            authenticationMethod: settings.authenticationMethod(),
+            hostKeyValidator: settings.hostKeyValidator,
+            algorithms: settings.algorithms,
+            protocolOptions: settings.protocolOptions
+        )
     }
     
     /// Connects to an SSH server.
@@ -312,38 +241,25 @@ public final class SSHClient {
         algorithms: SSHAlgorithms = SSHAlgorithms(),
         protocolOptions: Set<SSHProtocolOption> = []
     ) async throws -> SSHClient {
-        let client = SSHClient(
-            session: nil,
+        let inboundChannelHandler = SSHClientInboundChannelHandler()
+        try await SSHClientSession.addHandlers(
+            on: channel,
+            authenticationMethod: authenticationMethod(),
+            inboundChannelHandler: inboundChannelHandler,
+            hostKeyValidator: hostKeyValidator,
+            protocolOptions: protocolOptions
+        ).get()
+        
+        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+        let session = SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
+        
+        return SSHClient(
+            session: session,
             authenticationMethod: authenticationMethod(),
             hostKeyValidator: hostKeyValidator,
             algorithms: algorithms,
             protocolOptions: protocolOptions
         )
-
-        var settings = SSHClientSettings(
-            host: "unknown",
-            port: 0,
-            authenticationMethod: authenticationMethod,
-            hostKeyValidator: hostKeyValidator
-        )
-        settings.algorithms = algorithms
-        settings.protocolOptions = protocolOptions
-
-        // Setup the inbound channel initializer to handle forwarded-tcpip channels
-        settings.inboundChildChannelInitializer = SSHClient.makeInboundChannelInitializer(for: client)
-
-        try await SSHClientSession.addHandlers(
-            on: channel,
-            settings: settings
-        ).get()
-
-        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
-        let session = SSHClientSession(channel: channel, sshHandler: sshHandler)
-
-        client.session = session
-        client.onNewSession(session)
-
-        return client
     }
     
     /// Connects to an SSH server.
@@ -371,20 +287,25 @@ public final class SSHClient {
         channelHandlers: [ChannelHandler] = [],
         connectTimeout:TimeAmount = .seconds(30)
     ) async throws -> SSHClient {
-        // Create settings and use the main connect method to ensure proper setup
-        var settings = SSHClientSettings(
+        let session = try await SSHClientSession.connect(
             host: host,
             port: port,
-            authenticationMethod: { authenticationMethod },
-            hostKeyValidator: hostKeyValidator
+            authenticationMethod: authenticationMethod,
+            hostKeyValidator: hostKeyValidator,
+            algorithms: algorithms,
+            protocolOptions: protocolOptions,
+            group: group,
+            channelHandlers: channelHandlers,
+            connectTimeout: connectTimeout
         )
-        settings.algorithms = algorithms
-        settings.protocolOptions = protocolOptions
-        settings.group = group
-        settings.channelHandlers = channelHandlers
-        settings.connectTimeout = connectTimeout
-
-        let client = try await connect(to: settings)
+        
+        let client = SSHClient(
+            session: session,
+            authenticationMethod: authenticationMethod,
+            hostKeyValidator: hostKeyValidator,
+            algorithms: algorithms,
+            protocolOptions: protocolOptions
+        )
         
         switch reconnect.mode {
         case .always:

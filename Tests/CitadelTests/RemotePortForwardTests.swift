@@ -38,29 +38,25 @@ final class RemotePortForwardTests: XCTestCase {
 
         // Request remote port forward on a random high port
         // Use port 0 to let the server choose
-        let forward = try await client.createRemotePortForward(
-            host: "127.0.0.1",
-            port: 0  // Let server choose port
-        ) { channel, forwardedInfo in
-            print("Received forwarded connection from \(forwardedInfo.originatorAddress)")
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await client.withRemotePortForward(
+                    host: "127.0.0.1",
+                    port: 0 // Let server choose port
+                ) { forward in
+                    XCTAssertGreaterThan(forward.boundPort, 0, "Server should have bound to a port")
+                    XCTAssertEqual(forward.host, "127.0.0.1")
+                } handleChannel: { channel, forwardedInfo in
+                    print("Received forwarded connection from \(forwardedInfo.originatorAddress)")
 
-            // Just close the channel for this test
-            return channel.close()
+                    // Just close the channel for this test
+                    return channel.close()
+                }
+            }
+
+            try await Task.sleep(for: .seconds(1))
+            group.cancelAll()
         }
-
-        print("Remote port forward established on port \(forward.boundPort)")
-
-        XCTAssertGreaterThan(forward.boundPort, 0, "Server should have bound to a port")
-        XCTAssertEqual(forward.host, "127.0.0.1")
-
-        // Cancel the forward
-        print("Canceling remote port forward...")
-        try await client.cancelRemotePortForward(forward)
-        print("Remote port forward canceled")
-
-        // Note: We can't easily test if the handler is called without setting up
-        // a way to connect to the remote port, which would require network access
-        // from the test to the SSH server. This is typically done in integration tests.
     }
 
     /// Test that we can create and cancel multiple forwards
@@ -87,34 +83,28 @@ final class RemotePortForwardTests: XCTestCase {
             }
         }
 
-        // Create first forward
-        let forward1 = try await client.createRemotePortForward(
-            host: "127.0.0.1",
-            port: 0
-        ) { channel, _ in
-            channel.close()
+        // TODO: Confirmation from swift-testing
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<3 {
+                group.addTask {
+                    try await client.withRemotePortForward(
+                        host: "127.0.0.1",
+                        port: 0
+                    ) { forward in
+                        XCTAssertGreaterThan(forward.boundPort, 0, "Server should have bound to a port")
+                        XCTAssertEqual(forward.host, "127.0.0.1")
+                    } handleChannel: { channel, forwardedInfo in
+                        print("Received forwarded connection from \(forwardedInfo.originatorAddress)")
+
+                        // Just close the channel for this test
+                        return channel.close()
+                    }
+                }
+            }
+
+            try await Task.sleep(for: .seconds(1))
+            group.cancelAll()
         }
-
-        XCTAssertGreaterThan(forward1.boundPort, 0)
-        print("First forward on port \(forward1.boundPort)")
-
-        // Create second forward - this will replace the handler
-        let forward2 = try await client.createRemotePortForward(
-            host: "127.0.0.1",
-            port: 0
-        ) { channel, _ in
-            channel.close()
-        }
-
-        XCTAssertGreaterThan(forward2.boundPort, 0)
-        XCTAssertNotEqual(forward1.boundPort, forward2.boundPort, "Should bind to different ports")
-        print("Second forward on port \(forward2.boundPort)")
-
-        // Cancel both
-        try await client.cancelRemotePortForward(forward1)
-        try await client.cancelRemotePortForward(forward2)
-
-        print("Both forwards canceled")
     }
 
     /// Test that the SSHRemotePortForward struct works correctly

@@ -5,10 +5,10 @@ import NIOCore
 ///
 /// A `struct` is used instead of a public `enum` so new algorithms can be
 /// added later without breaking source or ABI stability.
-public struct SSHKeyType: RawRepresentable, Equatable, Hashable, CaseIterable, CustomStringConvertible {
+public struct SSHKeyType: RawRepresentable, Equatable, Hashable, CaseIterable, CustomStringConvertible, Sendable {
     
     // MARK: Backing storage for the algorithms currently bundled with Citadel.
-    internal enum BackingKeyType: String, CaseIterable {
+    internal enum BackingKeyType: String, CaseIterable, Sendable {
         case rsa        = "ssh-rsa"
         case ed25519    = "ssh-ed25519"
         case ecdsaP256  = "ecdsa-sha2-nistp256"

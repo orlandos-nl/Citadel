@@ -1,10 +1,11 @@
-// swift-tools-version:5.5
+// swift-tools-version:5.9
 import PackageDescription
 
 let package = Package(
     name: "RemotePortForwardExample",
     platforms: [
-        .macOS(.v12)
+        .macOS(.v14),
+        .iOS(.v17)
     ],
     dependencies: [
         .package(name: "Citadel", path: "../.."),
