@@ -329,4 +329,23 @@ final class KeyTests: XCTestCase {
         let ecdsa521KeyType = try SSHKeyDetection.detectPrivateKeyType(from: ecdsa521PrivateKey)
         XCTAssertEqual(ecdsa521KeyType, .ecdsaP521)
     }
+
+    func testHighRoundsBcryptED25519Key() throws {
+        // Verifies that keys generated with high bcrypt_pbkdf round counts (e.g. the macOS
+        // ssh-keygen default of 100) are accepted. The key is generated in CI via:
+        //   ssh-keygen -t ed25519 -a 100 -N "citadel-test-passphrase" -f /tmp/citadel_test_ed25519
+        guard
+            let keyPath = ProcessInfo.processInfo.environment["SSH_TEST_ED25519_KEY_PATH"],
+            let passphrase = ProcessInfo.processInfo.environment["SSH_TEST_ED25519_PASSPHRASE"]
+        else {
+            throw XCTSkip("SSH_TEST_ED25519_KEY_PATH / SSH_TEST_ED25519_PASSPHRASE not set")
+        }
+
+        let keyContent = try String(contentsOfFile: keyPath, encoding: .utf8)
+        let privateKey = try Curve25519.Signing.PrivateKey(
+            sshEd25519: keyContent,
+            decryptionKey: Data(passphrase.utf8)
+        )
+        XCTAssertFalse(privateKey.publicKey.rawRepresentation.isEmpty)
+    }
 }

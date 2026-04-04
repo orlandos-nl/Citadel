@@ -116,25 +116,34 @@ final class ExecHandler: ChannelDuplexHandler {
                 channel.close(promise: nil)
             }
         }
-        
+
         let (ours, theirs) = GlueHandler.matchedPair()
-        
-        // Ok, great, we've sorted stdout and stdin. For stderr we need a different strategy: we just park a thread for this.
+
+        // For stderr we park a dedicated thread that blocks on readDataToEndOfFile().
+        // Using a readabilityHandler + readToEnd() is unreliable on Linux: readToEnd()
+        // throws when called from within a readability callback, which would close the
+        // SSH channel prematurely and send a ChannelFailureEvent to the client.
         let stderrHandle = handler.stderrPipe.fileHandleForReading
-        stderrHandle.readabilityHandler = { stderrHandle in
-            do {
-                guard let data = try stderrHandle.readToEnd() else {
-                    stderrHandle.readabilityHandler = nil
-                    return
-                }
+        DispatchQueue.global().async {
+            let data = stderrHandle.readDataToEndOfFile()
+            guard !data.isEmpty else { return }
+            channel.eventLoop.execute {
                 var buffer = channel.allocator.buffer(capacity: data.count)
                 buffer.writeContiguousBytes(data)
-                channel.writeAndFlush(SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)), promise: nil)
-            } catch {
-                channel.close(promise: nil)
+                channel.writeAndFlush(
+                    SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)),
+                    promise: nil
+                )
             }
         }
-        
+
+        // Tracks whether SSH_MSG_CHANNEL_SUCCESS has been sent for this exec request.
+        // Once sent, a later failure in the pipeline must NOT send SSH_MSG_CHANNEL_FAILURE
+        // (that would be a protocol violation that confuses the client into throwing
+        // channelFailure instead of receiving a clean EOF). All accesses occur on the
+        // channel's event loop so no locking is needed.
+        var channelSuccessSent = false
+
         channel.pipeline.addHandler(ours).flatMap {
             NIOPipeBootstrap(group: channel.eventLoop)
                 .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
@@ -157,11 +166,12 @@ final class ExecHandler: ChannelDuplexHandler {
                     try await pipeChannel.close(mode: .all)
                 }
             }
-            
+
             return start.futureResult.flatMap {
                 if event.wantReply {
                     return channel.triggerUserOutboundEvent(ChannelSuccessEvent()).map {
-                        pipeChannel
+                        channelSuccessSent = true
+                        return pipeChannel
                     }
                 } else {
                     return channel.eventLoop.makeSucceededFuture(pipeChannel)
@@ -169,7 +179,13 @@ final class ExecHandler: ChannelDuplexHandler {
             }
         }.flatMap { pipeChannel in
             successPromise.futureResult.flatMap { code in
-                pipeChannel.close(mode: .all).map { code }
+                // On Linux, NIOPipeBootstrap may close the pipeChannel itself when the
+                // stdout pipe's write end is closed while data is in-flight (EPOLLHUP).
+                // By the time succeed() is called the pipe has been fully drained, so
+                // ignoring an already-closed error here is safe.
+                pipeChannel.close(mode: .all)
+                    .flatMapError { _ in pipeChannel.eventLoop.makeSucceededVoidFuture() }
+                    .map { code }
             }
         }.flatMap { code in
             channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExitStatus(exitStatus: code))
@@ -178,7 +194,11 @@ final class ExecHandler: ChannelDuplexHandler {
             case .success:
                 channel.close(promise: nil)
             case .failure:
-                if event.wantReply {
+                // Only send ChannelFailureEvent when the exec setup itself failed (before
+                // ChannelSuccessEvent was sent). Sending it after ChannelSuccessEvent is a
+                // protocol violation and causes the client to throw channelFailure instead
+                // of receiving a clean stream termination.
+                if event.wantReply && !channelSuccessSent {
                     channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
                         channel.close(promise: nil)
                     }

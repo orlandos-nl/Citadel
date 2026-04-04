@@ -440,14 +440,17 @@ extension OpenSSH.KDF {
             
             self = .none
         case .bcrypt:
+            // `rounds` is a direct bcrypt_pbkdf iteration count, not a BCrypt cost/log-rounds factor.
+            // ssh-keygen historically defaulted to 16; macOS now defaults to 100. Allow up to 1024.
             guard
                 let salt = options.readSSHBuffer(),
                 let rounds: UInt32 = options.readInteger(),
-                rounds < 32
+                rounds > 0,
+                rounds <= (1 << 20)
             else {
                 throw InvalidOpenSSHKey.invalidOrUnsupportedBCryptConfig
             }
-            
+
             self = .bcrypt(salt: salt, iterations: rounds)
         }
     }
