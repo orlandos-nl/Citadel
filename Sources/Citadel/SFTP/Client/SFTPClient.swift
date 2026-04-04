@@ -193,7 +193,72 @@ public final class SFTPClient: Sendable {
         
         return names
     }
-    
+
+    /// List the contents of a directory on the SFTP server, delivering each
+    /// batch of entries as it arrives from the server via `onBatch`.
+    ///
+    /// Unlike ``listDirectory(atPath:)`` which collects all readdir packets
+    /// before returning, this method invokes `onBatch` after each
+    /// `SSH_FXP_NAME` response, allowing the caller to process items
+    /// incrementally. This is especially useful for directories with many
+    /// entries (hundreds or thousands) where buffering everything in memory
+    /// is undesirable.
+    ///
+    /// - Parameters:
+    ///   - path: The path to list
+    ///   - onBatch: Called once per readdir packet with the entries from that packet.
+    ///     The `batchIndex` parameter is the zero-based ordinal of this packet.
+    /// - Returns: The total number of components received across all batches.
+    @discardableResult
+    public func listDirectoryStreaming(
+        atPath path: String,
+        onBatch: (_ components: [SFTPPathComponent], _ batchIndex: Int) throws -> Void
+    ) async throws -> Int {
+        var path = path
+        var oldPath: String
+
+        repeat {
+            oldPath = path
+            guard case .name(let realpath) = try await sendRequest(.realpath(.init(requestId: self.allocateRequestId(), path: path))) else {
+                self.logger.warning("SFTP server returned bad response to realpath request, this is a protocol error")
+                throw SFTPError.invalidResponse
+            }
+            path = realpath.path
+        } while path != oldPath
+
+        guard case .handle(let handle) = try await sendRequest(.opendir(.init(requestId: self.allocateRequestId(), handle: path))) else {
+            self.logger.warning("SFTP server returned bad response to opendir request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+
+        var totalComponents = 0
+        var batchIndex = 0
+        var response = try await sendRequest(
+            .readdir(
+                .init(
+                    requestId: self.allocateRequestId(),
+                    handle: handle.handle
+                )
+            )
+        )
+
+        while case .name(let name) = response {
+            totalComponents += name.components.count
+            try onBatch(name.components, batchIndex)
+            batchIndex += 1
+            response = try await sendRequest(
+                .readdir(
+                    .init(
+                        requestId: self.allocateRequestId(),
+                        handle: handle.handle
+                    )
+                )
+            )
+        }
+
+        return totalComponents
+    }
+
     /// Get the attributes of a file on the SFTP server.
     ///
     /// - Parameter filePath: Path to the file
