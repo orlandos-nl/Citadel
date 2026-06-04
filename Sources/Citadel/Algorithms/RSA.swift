@@ -13,6 +13,10 @@ extension Insecure {
 extension Insecure.RSA {
     public final class PublicKey: NIOSSHPublicKeyProtocol {
         public static let publicKeyPrefix = "ssh-rsa"
+        // RFC 8332: the public key blob stays "ssh-rsa", but user authentication advertises
+        // and signs with rsa-sha2-256 so modern OpenSSH servers (which drop ssh-rsa/SHA-1
+        // from PubkeyAcceptedAlgorithms) accept the same RSA key.
+        public static let publicKeyAuthAlgorithmName = "rsa-sha2-256"
         public static let keyExchangeAlgorithms = ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1"]
         
         // PublicExponent e
@@ -73,17 +77,32 @@ extension Insecure.RSA {
                 return false
             }
             
-            var clientSignature = [UInt8](repeating: 0, count: 20)
-            let digest = Array(digest)
-            CCryptoBoringSSL_SHA1(digest, digest.count, &clientSignature)
-            
-            let signature = Array(signature.rawRepresentation)
+            let message = Array(digest)
+            let signatureBytes = Array(signature.rawRepresentation)
+
+            // Try SHA-256 (rsa-sha2-256, RFC 8332) first, then fall back to the legacy
+            // SHA-1 (ssh-rsa) digest so that host-key signatures keep verifying.
+            var sha256 = [UInt8](repeating: 0, count: 32)
+            CCryptoBoringSSL_SHA256(message, message.count, &sha256)
+            if CCryptoBoringSSL_RSA_verify(
+                NID_sha256,
+                sha256,
+                sha256.count,
+                signatureBytes,
+                signatureBytes.count,
+                context
+            ) == 1 {
+                return true
+            }
+
+            var sha1 = [UInt8](repeating: 0, count: 20)
+            CCryptoBoringSSL_SHA1(message, message.count, &sha1)
             return CCryptoBoringSSL_RSA_verify(
                 NID_sha1,
-                clientSignature,
-                20,
-                signature,
-                signature.count,
+                sha1,
+                sha1.count,
+                signatureBytes,
+                signatureBytes.count,
                 context
             ) == 1
         }
@@ -138,8 +157,11 @@ extension Insecure.RSA {
     }
     
     public struct Signature: ContiguousBytes, NIOSSHSignatureProtocol {
-        public static let signaturePrefix = "ssh-rsa"
-        
+        // We sign with rsa-sha2-256 (RFC 8332). When reading we still accept the legacy
+        // "ssh-rsa" identifier so RSA host-key signatures keep verifying.
+        public static let signaturePrefix = "rsa-sha2-256"
+        public static let acceptedSignaturePrefixes = ["rsa-sha2-256", "ssh-rsa"]
+
         public let rawRepresentation: Data
         
         public init<D>(rawRepresentation: D) where D : DataProtocol {
@@ -230,12 +252,14 @@ extension Insecure.RSA {
                 throw CitadelError.signingError
             }
             
-            let hash = Array(Insecure.SHA1.hash(data: message))
+            // RFC 8332: sign the data with RSASSA-PKCS1-v1_5 over SHA-256. BoringSSL's
+            // RSA_sign prepends the correct SHA-256 DigestInfo (EMSA-PKCS1-v1_5) prefix.
+            let hash = Array(SHA256.hash(data: message))
             let out = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
             defer { out.deallocate() }
             var outLength: UInt32 = 4096
             let result = CCryptoBoringSSL_RSA_sign(
-                NID_sha1,
+                NID_sha256,
                 hash,
                 Int(hash.count),
                 out,
