@@ -440,4 +440,61 @@ final class WithExecTests: XCTestCase {
             XCTAssertEqual(execDelegate.receivedEnv["BAZ"], "qux")
         }
     }
+
+    /// `withPTY(_:command:)` dispatches the command as an "exec" channel request (RFC 4254 §6.5,
+    /// the `ssh -t host cmd` model) instead of a "shell" request, so the command is carried in the
+    /// protocol packet rather than typed into (and echoed by) a remote shell.
+    func testWithPTYCommandSendsExecRequest() async throws {
+        final class Exec: ExecDelegate, @unchecked Sendable {
+            struct Ctx: ExecCommandContext {
+                func terminate() async throws {}
+            }
+            var receivedCommand: String?
+            func setEnvironmentValue(_ value: String, forKey key: String) async throws {}
+            func start(command: String, outputHandler: ExecOutputHandler) async throws -> ExecCommandContext {
+                receivedCommand = command
+                DispatchQueue.global().async {
+                    let handle = outputHandler.stdoutPipe.fileHandleForWriting
+                    handle.write(Data("interactive".utf8))
+                    try? handle.close()
+                    // Let NIO drain the pipe before succeed triggers pipeChannel.close
+                    Thread.sleep(forTimeInterval: 0.3)
+                    outputHandler.succeed(exitCode: 0)
+                }
+                return Ctx()
+            }
+        }
+
+        try await runTest { server, client in
+            let execDelegate = Exec()
+            server.enableExec(withDelegate: execDelegate)
+
+            // wantReply is false because the test server doesn't acknowledge pty-req;
+            // the exec request below is what's under test.
+            let ptyRequest = SSHChannelRequestEvent.PseudoTerminalRequest(
+                wantReply: false,
+                term: "xterm",
+                terminalCharacterWidth: 80,
+                terminalRowHeight: 24,
+                terminalPixelWidth: 0,
+                terminalPixelHeight: 0,
+                terminalModes: .init([.ECHO: 1])
+            )
+
+            try await client.withPTY(ptyRequest, command: "htop") { inbound, _ in
+                var collected = ByteBuffer()
+                for try await chunk in inbound {
+                    switch chunk {
+                    case .stdout(let buf):
+                        collected.writeImmutableBuffer(buf)
+                    case .stderr:
+                        XCTFail("Expected only stdout data")
+                    }
+                }
+                XCTAssertEqual(String(buffer: collected), "interactive")
+            }
+
+            XCTAssertEqual(execDelegate.receivedCommand, "htop")
+        }
+    }
 }
