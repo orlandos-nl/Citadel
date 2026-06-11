@@ -263,7 +263,10 @@ extension SSHClient {
     }
 
     enum CommandMode {
-        case pty(SSHChannelRequestEvent.PseudoTerminalRequest), tty(command: String?), command(String)
+        // pty: `command == nil` requests a login shell ("shell" request); a non-nil command is
+        // sent as an "exec" request on the PTY channel (RFC 4254 §6.5, like `ssh -t host cmd`),
+        // so it runs without being typed into — or echoed by — the shell.
+        case pty(SSHChannelRequestEvent.PseudoTerminalRequest, command: String?), tty(command: String?), command(String)
     }
 
     internal func _executeCommandStream(
@@ -323,9 +326,18 @@ extension SSHClient {
         }
 
         switch mode {
-        case .pty(let request):
+        case .pty(let request, let command):
             try await channel.triggerUserOutboundEvent(request)
-            fallthrough
+            if let command {
+                try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(
+                    command: command,
+                    wantReply: true
+                ))
+            } else {
+                try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
+                    wantReply: true
+                ))
+            }
         case .tty:
             try await channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ShellRequest(
                 wantReply: true
@@ -343,18 +355,22 @@ extension SSHClient {
     /// Creates a pseudo-terminal (PTY) session and executes the provided closure with input/output streams
     /// - Parameters:
     ///   - request: PTY configuration parameters
+    ///   - command: Optional command to run on the PTY via an "exec" request (RFC 4254 §6.5),
+    ///     like `ssh -t host cmd`. The command is carried in the protocol packet — never typed
+    ///     into the shell, so it is not echoed. `nil` requests an interactive login shell.
     ///   - environment: Array of environment variables to set for the PTY session. This requires `PermitUserEnvironment` to be enabled in your OpenSSH server's configuration.
     ///   - perform: Closure that receives TTY input/output streams and performs terminal operations
     /// - Throws: Any errors that occur during PTY setup or operation
     @available(macOS 15.0, *)
     public func withPTY(
         _ request: SSHChannelRequestEvent.PseudoTerminalRequest,
+        command: String? = nil,
         environment: [SSHChannelRequestEvent.EnvironmentRequest] = [],
         perform: (_ inbound: TTYOutput, _ outbound: TTYStdinWriter) async throws -> Void
     ) async throws {
         let (channel, output) = try await _executeCommandStream(
             environment: environment,
-            mode: .pty(request)
+            mode: .pty(request, command: command)
         )
 
         func close() async throws {
