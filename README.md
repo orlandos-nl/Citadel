@@ -86,6 +86,16 @@ try await client.withPTY(
 }
 ```
 
+By default `withPTY` requests an interactive login shell. Pass `command:` to run a specific
+command on the PTY via an "exec" request instead (the `ssh -t host cmd` model) — the command is
+carried in the protocol packet, so it is never typed into or echoed by a remote shell:
+
+```swift
+try await client.withPTY(ptyRequest, command: "htop") { ttyOutput, ttyStdinWriter in
+    // ...interact with the running command...
+}
+```
+
 ### Jump Hosts
 
 Citadel supports jumping to another Host. First, connect to the jump host:
