@@ -205,28 +205,39 @@ extension SSHClient {
         inShell: Bool = false
     ) async throws -> ByteBuffer {
         var result = ByteBuffer()
-        let stream = try await executeCommandStream(command, inShell: inShell)
+        let (channel, stream) = try await _executeCommandStream(
+            mode: inShell ? .tty(command: command) : .command(command)
+        )
 
-        for try await chunk in stream {
-            switch chunk {
-            case .stderr(let chunk):
-                guard mergeStreams else {
-                    logger.debug("Error data received, but ignored because `mergeStreams` is disabled")
-                    continue
+        do {
+            for try await chunk in stream {
+                switch chunk {
+                case .stderr(let chunk):
+                    guard mergeStreams else {
+                        logger.debug("Error data received, but ignored because `mergeStreams` is disabled")
+                        continue
+                    }
+
+                    fallthrough
+                case .stdout(let chunk):
+                    let newResponseSize = chunk.readableBytes + result.readableBytes
+
+                    if newResponseSize > maxResponseSize {
+                        try? await channel.close().get()
+                        throw CitadelError.commandOutputTooLarge
+                    }
+
+                    result.writeImmutableBuffer(chunk)
                 }
-
-                fallthrough
-            case .stdout(let chunk):
-                let newResponseSize = chunk.readableBytes + result.readableBytes
-
-                if newResponseSize > maxResponseSize {
-                    throw CitadelError.commandOutputTooLarge
-                }
-
-                result.writeImmutableBuffer(chunk)
             }
+        } catch {
+            // Covers CancellationError and stream failures: without this the
+            // channel leaks and the remote command keeps running.
+            try? await channel.close().get()
+            throw error
         }
 
+        try? await channel.close().get()
         return result
     }
 
@@ -317,6 +328,15 @@ extension SSHClient {
 
             return createChannel.futureResult
         }.get()
+
+        // If the consumer's task is cancelled, the stream terminates without the
+        // channel ever being closed - leaking the channel and leaving the remote
+        // command running. Close it explicitly on cancellation.
+        streamContinuation.onTermination = { reason in
+            if case .cancelled = reason {
+                channel.close(promise: nil)
+            }
+        }
 
         for env in environment {
             try await channel.triggerUserOutboundEvent(env)
