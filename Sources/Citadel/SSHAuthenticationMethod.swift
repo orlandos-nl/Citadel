@@ -26,7 +26,17 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
         self.allImplementations = [.custom(custom)]
         self.implementations = allImplementations
     }
-    
+
+    /// Offers are tried in order: each one is used when the server rejects the
+    /// previous. Lets a key be offered under several signature algorithms.
+    internal init(
+        username: String,
+        offers: [NIOSSHUserAuthenticationOffer.Offer]
+    ) {
+        self.allImplementations = offers.map { .user(username, offer: $0) }
+        self.implementations = allImplementations
+    }
+
     /// Creates a password based authentication method.
     /// - Parameters:
     ///  - username: The username to authenticate with.
@@ -42,7 +52,34 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
     public static func rsa(username: String, privateKey: Insecure.RSA.PrivateKey) -> SSHAuthenticationMethod {
         return SSHAuthenticationMethod(username: username, offer: .privateKey(.init(privateKey: .init(custom: privateKey))))
     }
-    
+
+    /// Public key authentication with an RSA key, using the RFC 8332 SHA-2
+    /// signature algorithms.
+    ///
+    /// `ssh-rsa` (SHA-1) has been off by default in OpenSSH's
+    /// `PubkeyAcceptedAlgorithms` since 8.8, so `rsa(username:privateKey:)`
+    /// cannot authenticate against a stock modern server. This offers
+    /// `rsa-sha2-512` then `rsa-sha2-256`, and finally plain `ssh-rsa` when
+    /// `includeSHA1Fallback` is set, for servers predating RFC 8332.
+    /// - Parameters:
+    ///   - username: The username to authenticate with.
+    ///   - privateKey: The RSA private key to authenticate with.
+    ///   - includeSHA1Fallback: Also offer legacy `ssh-rsa`. Defaults to `true`.
+    public static func rsaSHA2(
+        username: String,
+        privateKey: Insecure.RSA.PrivateKey,
+        includeSHA1Fallback: Bool = true
+    ) -> SSHAuthenticationMethod {
+        var offers: [NIOSSHUserAuthenticationOffer.Offer] = [
+            .privateKey(.init(privateKey: .init(custom: Insecure.RSA.SHA2PrivateKey<RSASHA2_512>(privateKey)))),
+            .privateKey(.init(privateKey: .init(custom: Insecure.RSA.SHA2PrivateKey<RSASHA2_256>(privateKey)))),
+        ]
+        if includeSHA1Fallback {
+            offers.append(.privateKey(.init(privateKey: .init(custom: privateKey))))
+        }
+        return SSHAuthenticationMethod(username: username, offers: offers)
+    }
+
     /// Creates a public key based authentication method.
     /// - Parameters: 
     /// - username: The username to authenticate with.
