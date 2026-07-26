@@ -287,6 +287,9 @@ enum OpenSSH {
     enum KeyType: String {
         case sshRSA = "ssh-rsa"
         case sshED25519 = "ssh-ed25519"
+        case ecdsaP256 = "ecdsa-sha2-nistp256"
+        case ecdsaP384 = "ecdsa-sha2-nistp384"
+        case ecdsaP521 = "ecdsa-sha2-nistp521"
     }
     
     struct PrivateKey<SSHKey: OpenSSHPrivateKey> {
