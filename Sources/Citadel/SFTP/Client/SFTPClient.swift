@@ -169,19 +169,14 @@ public final class SFTPClient: Sendable {
             throw SFTPError.invalidResponse
         }
         
-        var names = [SFTPMessage.Name]()
-        var response = try await sendRequest(
-            .readdir(
-                .init(
-                    requestId: self.allocateRequestId(),
-                    handle: handle.handle
-                )
-            )
-        )
-        
-        while case .name(let name) = response {
-            names.append(name)
-            response = try await sendRequest(
+        // The directory handle is released whether the read loop completes or throws. Returning
+        // (or throwing) straight out of the loop leaks it for the lifetime of the SFTP session:
+        // the server keeps one entry per unclosed handle and its handle table is finite, so a
+        // client that lists directories in a long-lived session eventually fails every
+        // subsequent open until it reconnects.
+        do {
+            var names = [SFTPMessage.Name]()
+            var response = try await sendRequest(
                 .readdir(
                     .init(
                         requestId: self.allocateRequestId(),
@@ -189,9 +184,47 @@ public final class SFTPClient: Sendable {
                     )
                 )
             )
+
+            while case .name(let name) = response {
+                names.append(name)
+                response = try await sendRequest(
+                    .readdir(
+                        .init(
+                            requestId: self.allocateRequestId(),
+                            handle: handle.handle
+                        )
+                    )
+                )
+            }
+
+            await closeDirectoryHandle(handle.handle)
+            return names
+        } catch {
+            await closeDirectoryHandle(handle.handle)
+            throw error
         }
-        
-        return names
+    }
+
+    /// Releases a directory handle obtained from `opendir`. SSH_FXP_CLOSE closes both file and
+    /// directory handles (draft-ietf-secsh-filexfer-02, section 6.3).
+    ///
+    /// Best-effort by design: the caller has already read everything it needs, so a close that
+    /// fails - or a session that has gone away underneath it - must not turn a successful listing
+    /// into a thrown error. A failure here costs a single handle, which is strictly better than
+    /// the unconditional leak, and is logged rather than surfaced.
+    private func closeDirectoryHandle(_ handle: ByteBuffer) async {
+        do {
+            let result = try await sendRequest(
+                .closeFile(.init(requestId: self.allocateRequestId(), handle: handle))
+            )
+            guard case .status(let status) = result, status.errorCode == .ok else {
+                self.logger.warning("SFTP server did not acknowledge closing directory handle \(handle.sftpHandleDebugDescription)")
+                return
+            }
+            self.logger.debug("SFTP closed directory handle \(handle.sftpHandleDebugDescription)")
+        } catch {
+            self.logger.warning("SFTP failed to close directory handle \(handle.sftpHandleDebugDescription): \(error)")
+        }
     }
     
     /// Get the attributes of a file on the SFTP server.
