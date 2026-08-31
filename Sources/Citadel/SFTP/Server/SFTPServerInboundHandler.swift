@@ -580,7 +580,20 @@ final class SFTPServerInboundHandler: ChannelInboundHandler {
             readlink(command: command, context: context)
         case .rename(let command):
             rename(command: command, context: context)
-        case .version, .handle, .status, .data, .attributes, .name:
+        case .extended(let command):
+            // No extensions are implemented server-side; answer per the protocol instead of dropping the channel.
+            context.channel.writeAndFlush(
+                SFTPMessage.status(
+                    SFTPMessage.Status(
+                        requestId: command.requestId,
+                        errorCode: .unsupportedOperation,
+                        message: "Extension not supported",
+                        languageTag: "EN"
+                    )
+                ),
+                promise: nil
+            )
+        case .version, .handle, .status, .data, .attributes, .name, .extendedReply:
             // Client cannot send these messages
             context.channel.triggerUserOutboundEvent(ChannelFailureEvent()).whenComplete { _ in
                 context.channel.close(promise: nil)
