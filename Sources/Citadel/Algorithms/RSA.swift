@@ -186,7 +186,7 @@ extension Insecure.RSA {
             CCryptoBoringSSL_BN_free(privateExponent)
         }
         
-        public init(bits: Int = 2047, publicExponent e: BigUInt = 65537) {
+        public convenience init(bits: Int = 2047, publicExponent e: BigUInt = 65537) {
             // `bits` kept for API compatibility; DH private exponent width follows the prime size.
             self.init(diffieHellmanPrime: dh14p, publicExponent: e)
         }
