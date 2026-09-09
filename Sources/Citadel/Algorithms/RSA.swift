@@ -186,22 +186,30 @@ extension Insecure.RSA {
             CCryptoBoringSSL_BN_free(privateExponent)
         }
         
-        public init(bits: Int = 2047, publicExponent e: BigUInt = 65537) {
+        public convenience init(bits: Int = 2047, publicExponent e: BigUInt = 65537) {
+            // `bits` kept for API compatibility; DH private exponent width follows the prime size.
+            self.init(diffieHellmanPrime: dh14p, publicExponent: e)
+        }
+
+        /// Generate an ephemeral DH key pair against the given MODP prime (g=2).
+        public init(diffieHellmanPrime: [UInt8], publicExponent e: BigUInt = 65537) {
             let privateKey = CCryptoBoringSSL_BN_new()!
             let publicKey = CCryptoBoringSSL_BN_new()!
-            let group = CCryptoBoringSSL_BN_bin2bn(dh14p, dh14p.count, nil)!
+            let group = CCryptoBoringSSL_BN_bin2bn(diffieHellmanPrime, diffieHellmanPrime.count, nil)!
             let generator = CCryptoBoringSSL_BN_bin2bn(generator2, generator2.count, nil)!
             let bignumContext = CCryptoBoringSSL_BN_CTX_new()
-            
-            CCryptoBoringSSL_BN_rand(privateKey, 256 * 8 - 1, 0, /*-1*/BN_RAND_BOTTOM_ANY)
+
+            // ~256-bit exponents for 1024-bit group1; larger for group14.
+            let exponentBits: Int32 = diffieHellmanPrime.count <= 128 ? 255 : (256 * 8 - 1)
+            CCryptoBoringSSL_BN_rand(privateKey, exponentBits, 0, /*-1*/BN_RAND_BOTTOM_ANY)
             CCryptoBoringSSL_BN_mod_exp(publicKey, generator, privateKey, group, bignumContext)
             let eBytes = Array(e.serialize())
             let e = CCryptoBoringSSL_BN_bin2bn(eBytes, eBytes.count, nil)!
-            
+
             CCryptoBoringSSL_BN_CTX_free(bignumContext)
             CCryptoBoringSSL_BN_free(generator)
             CCryptoBoringSSL_BN_free(group)
-            
+
             self.privateExponent = privateKey
             self._publicKey = .init(
                 publicExponent: e,

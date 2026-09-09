@@ -96,6 +96,7 @@ public struct SSHAlgorithms: Sendable {
         ])
 
         algorithms.keyExchangeAlgorithms = .add([
+            DiffieHellmanGroup1Sha1.self,
             DiffieHellmanGroup14Sha1.self,
             DiffieHellmanGroup14Sha256.self
         ])
