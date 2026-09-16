@@ -169,19 +169,19 @@ public final class SFTPClient: Sendable {
             throw SFTPError.invalidResponse
         }
         
-        var names = [SFTPMessage.Name]()
-        var response = try await sendRequest(
-            .readdir(
-                .init(
-                    requestId: self.allocateRequestId(),
-                    handle: handle.handle
-                )
-            )
-        )
-        
-        while case .name(let name) = response {
-            names.append(name)
-            response = try await sendRequest(
+        // The handle has to go back, on every path out of here. A server keeps
+        // one open per opendir and caps how many it will hand out, so a client
+        // that browses without closing runs a listing into "no more handles"
+        // after a few dozen calls — and a recursive download, which lists every
+        // directory it walks, gets there fastest.
+        //
+        // Awaited on both paths rather than fired into a detached Task: the close
+        // is a request on this channel, and a caller that closes the client as
+        // soon as it has its listing would race a background send and drop it —
+        // leaking exactly the handle this is here to return.
+        do {
+            var names = [SFTPMessage.Name]()
+            var response = try await sendRequest(
                 .readdir(
                     .init(
                         requestId: self.allocateRequestId(),
@@ -189,9 +189,47 @@ public final class SFTPClient: Sendable {
                     )
                 )
             )
+
+            while case .name(let name) = response {
+                names.append(name)
+                response = try await sendRequest(
+                    .readdir(
+                        .init(
+                            requestId: self.allocateRequestId(),
+                            handle: handle.handle
+                        )
+                    )
+                )
+            }
+
+            await closeDirectoryHandle(handle.handle)
+            return names
+        } catch {
+            await closeDirectoryHandle(handle.handle)
+            throw error
         }
-        
-        return names
+    }
+
+    /// Give a directory handle back to the server.
+    ///
+    /// Never throws. The caller asked for a listing: if it has one, a failed
+    /// close must not turn that success into an error, and if it is already
+    /// unwinding then it carries a more useful error that this must not mask.
+    /// Either way the failure is worth a line in the log.
+    private func closeDirectoryHandle(_ handle: ByteBuffer) async {
+        do {
+            let result = try await sendRequest(.closeFile(.init(
+                requestId: self.allocateRequestId(),
+                handle: handle
+            )))
+            guard case .status(let status) = result, status.errorCode == .ok else {
+                self.logger.warning("SFTP server refused to close directory handle \(handle.sftpHandleDebugDescription)")
+                return
+            }
+            self.logger.debug("SFTP closed directory handle \(handle.sftpHandleDebugDescription)")
+        } catch {
+            self.logger.warning("SFTP failed to close directory handle \(handle.sftpHandleDebugDescription): \(error)")
+        }
     }
     
     /// Get the attributes of a file on the SFTP server.
