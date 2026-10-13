@@ -37,6 +37,7 @@ enum SFTPRequest: CustomDebugStringConvertible, Sendable {
     case rename(SFTPMessage.Rename)
     case fsetstat(SFTPMessage.FileSetStat)
     case setstat(SFTPMessage.SetStat)
+    case extended(SFTPMessage.Extended)
 
     var requestId: UInt32 {
         get {
@@ -70,6 +71,8 @@ enum SFTPRequest: CustomDebugStringConvertible, Sendable {
             case .fsetstat(let message):
                 return message.requestId
             case .setstat(let message):
+                return message.requestId
+            case .extended(let message):
                 return message.requestId
             }
         }
@@ -107,6 +110,8 @@ enum SFTPRequest: CustomDebugStringConvertible, Sendable {
             return .fsetstat(message)
         case .setstat(let message):
             return .setstat(message)
+        case .extended(let message):
+            return .extended(message)
         }
     }
     
@@ -127,6 +132,7 @@ enum SFTPRequest: CustomDebugStringConvertible, Sendable {
         case .rename(let message): return message.debugDescription
         case .fsetstat(let message): return message.debugDescription
         case .setstat(let message): return message.debugDescription
+        case .extended(let message): return message.debugDescription
         }
     }
 }
@@ -140,6 +146,7 @@ enum SFTPResponse: Sendable {
     case attributes(SFTPMessage.Attributes)
     case fsetstat(SFTPMessage.FileSetStat)
     case setstat(SFTPMessage.SetStat)
+    case extendedReply(SFTPMessage.ExtendedReply)
     
     var requestId: UInt32 {
         get {
@@ -159,6 +166,8 @@ enum SFTPResponse: Sendable {
             case .fsetstat(let message):
                 return message.requestId
             case .setstat(let message):
+                return message.requestId
+            case .extendedReply(let message):
                 return message.requestId
             }
         }
@@ -182,6 +191,8 @@ enum SFTPResponse: Sendable {
             return .fsetstat(message)
         case .setstat(let message):
             return .setstat(message)
+        case .extendedReply(let message):
+            return .extendedReply(message)
         }
     }
     
@@ -203,7 +214,9 @@ enum SFTPResponse: Sendable {
             self = .fsetstat(message)
         case .setstat(let message):
             self = .setstat(message)
-        case .realpath, .openFile, .fstat, .closeFile, .read, .write, .initialize, .version, .stat, .lstat, .rmdir, .opendir, .readdir, .remove, .symlink, .readlink, .rename:
+        case .extendedReply(let message):
+            self = .extendedReply(message)
+        case .realpath, .openFile, .fstat, .closeFile, .read, .write, .initialize, .version, .stat, .lstat, .rmdir, .opendir, .readdir, .remove, .symlink, .readlink, .rename, .extended:
             return nil
         }
     }
@@ -218,6 +231,7 @@ enum SFTPResponse: Sendable {
         case .attributes(let message): return message.debugDescription
         case .fsetstat(let message): return message.debugDescription
         case .setstat(let message): return message.debugDescription
+        case .extendedReply(let message): return message.debugDescription
         }
     }
 }
@@ -363,6 +377,31 @@ public enum SFTPMessage: Sendable {
         
         public var debugDescription: String { "{\(self.requestId)}(\(self.path),\(self.attributes)" }
         fileprivate var debugVariantWithoutLargeData: Self { self }
+    }
+
+    /// `SSH_FXP_EXTENDED` (draft-ietf-secsh-filexfer-02 §6.11) — a vendor extension request such as
+    /// `posix-rename@openssh.com`. `payload` is the extension-specific data following the name.
+    public struct Extended: SFTPMessageContent, Sendable {
+        public static let id = SFTPMessageType.extended
+
+        public let requestId: UInt32
+        public let name: String
+        public var payload: ByteBuffer
+
+        public var debugDescription: String { "{\(self.requestId)}(\(self.name), <\(payload.readableBytes) bytes>)" }
+        fileprivate var debugVariantWithoutLargeData: Self { .init(requestId: self.requestId, name: self.name, payload: .init()) }
+    }
+
+    /// `SSH_FXP_EXTENDED_REPLY` — the extension-specific reply. Extensions answered by a plain
+    /// `SSH_FXP_STATUS` (e.g. `posix-rename@openssh.com`) never produce this message.
+    public struct ExtendedReply: SFTPMessageContent, Sendable {
+        public static let id = SFTPMessageType.extendedReply
+
+        public let requestId: UInt32
+        public var payload: ByteBuffer
+
+        public var debugDescription: String { "{\(self.requestId)}(<\(payload.readableBytes) bytes>)" }
+        fileprivate var debugVariantWithoutLargeData: Self { .init(requestId: self.requestId, payload: .init()) }
     }
 
     public struct Rename: SFTPMessageContent, Sendable {
@@ -583,6 +622,8 @@ public enum SFTPMessage: Sendable {
     case attributes(Attributes)
     case readdir(ReadDir)
     case rename(Rename)
+    case extended(Extended)
+    case extendedReply(ExtendedReply)
     
     public var messageType: SFTPMessageType {
         switch self {
@@ -611,7 +652,9 @@ public enum SFTPMessage: Sendable {
                 .setstat(let message as SFTPMessageContent),
                 .symlink(let message as SFTPMessageContent),
                 .readlink(let message as SFTPMessageContent),
-                .rename(let message as SFTPMessageContent):
+                .rename(let message as SFTPMessageContent),
+                .extended(let message as SFTPMessageContent),
+                .extendedReply(let message as SFTPMessageContent):
             return message.id
         }
     }
@@ -643,7 +686,9 @@ public enum SFTPMessage: Sendable {
                 .setstat(let message as SFTPMessageContent),
                 .symlink(let message as SFTPMessageContent),
                 .readlink(let message as SFTPMessageContent),
-                .rename(let message as SFTPMessageContent):
+                .rename(let message as SFTPMessageContent),
+                .extended(let message as SFTPMessageContent),
+                .extendedReply(let message as SFTPMessageContent):
             return "\(message.id)\(message.debugDescription)"
         }
     }
@@ -675,6 +720,8 @@ public enum SFTPMessage: Sendable {
         case .symlink(let message): return Self.symlink(message.debugVariantWithoutLargeData)
         case .readlink(let message): return Self.readlink(message.debugVariantWithoutLargeData)
         case .rename(let message): return Self.rename(message.debugVariantWithoutLargeData)
+        case .extended(let message): return Self.extended(message.debugVariantWithoutLargeData)
+        case .extendedReply(let message): return Self.extendedReply(message.debugVariantWithoutLargeData)
         }
     }
     

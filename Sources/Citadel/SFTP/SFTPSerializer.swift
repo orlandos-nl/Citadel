@@ -125,6 +125,15 @@ final class SFTPMessageSerializer: MessageToByteEncoder {
             out.writeInteger(SFTPMessage.Symlink.id.rawValue)
             out.writeInteger(readlink.requestId)
             out.writeSSHString(readlink.path)
+        case .extended(var extended):
+            out.writeInteger(SFTPMessage.Extended.id.rawValue)
+            out.writeInteger(extended.requestId)
+            out.writeSSHString(extended.name)
+            out.writeBuffer(&extended.payload)
+        case .extendedReply(var reply):
+            out.writeInteger(SFTPMessage.ExtendedReply.id.rawValue)
+            out.writeInteger(reply.requestId)
+            out.writeBuffer(&reply.payload)
         case .rename(let rename):
             out.writeInteger(SFTPMessage.Rename.id.rawValue)
             out.writeInteger(rename.requestId)

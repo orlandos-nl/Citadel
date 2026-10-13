@@ -448,6 +448,51 @@ public final class SFTPClient: Sendable {
         return realpath.path
     }
 
+    /// Send an `SSH_FXP_EXTENDED` request (draft-ietf-secsh-filexfer-02 §6.11).
+    ///
+    /// - Parameters:
+    ///   - name: The extension name, e.g. `posix-rename@openssh.com`, `statvfs@openssh.com`.
+    ///   - payload: The extension-specific request data that follows the name.
+    /// - Returns: `.status` when the server answers with `SSH_FXP_STATUS` (only `.ok`/`.eof` reach the
+    ///   caller — any other status is thrown as `SFTPMessage.Status`), or `.reply(payload)` when it answers
+    ///   with `SSH_FXP_EXTENDED_REPLY`.
+    /// - Throws: `SFTPMessage.Status` for an error status; `SFTPError.invalidResponse` for a protocol error.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Atomic rename-onto-existing (OpenSSH): the plain SSH_FXP_RENAME refuses an existing target.
+    /// var payload = ByteBuffer()
+    /// payload.writeSSHString("staging.tmp")
+    /// payload.writeSSHString("final.txt")
+    /// _ = try await sftp.sendExtendedRequest("posix-rename@openssh.com", payload: payload)
+    /// ```
+    public func sendExtendedRequest(_ name: String, payload: ByteBuffer) async throws -> SFTPExtendedResponse {
+        self.logger.info("SFTP requesting extension '\(name)'")
+
+        let response = try await sendRequest(.extended(.init(
+            requestId: allocateRequestId(),
+            name: name,
+            payload: payload
+        )))
+
+        switch response {
+        case .status(let status):
+            return .status(status)
+        case .extendedReply(let reply):
+            return .reply(reply.payload)
+        default:
+            self.logger.warning("SFTP server returned bad response to extended request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+    }
+}
+
+/// The server's answer to an `SSH_FXP_EXTENDED` request.
+public enum SFTPExtendedResponse: Sendable {
+    /// Answered with `SSH_FXP_STATUS` (`.ok` or `.eof`).
+    case status(SFTPMessage.Status)
+    /// Answered with `SSH_FXP_EXTENDED_REPLY`; the extension-specific payload.
+    case reply(ByteBuffer)
 }
 
 extension SSHClient {
