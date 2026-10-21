@@ -83,6 +83,14 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
         availableMethods: NIOSSHAvailableUserAuthenticationMethods,
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
+        // A custom delegate drives the whole sequence itself: NIOSSH asks again after every
+        // rejected offer, and the delegate decides what (if anything) to offer next from the
+        // methods the server says it still accepts. So hand it every call, not just the first.
+        if allImplementations.count == 1, case .custom(let implementation) = allImplementations[0] {
+            implementation.nextAuthenticationType(availableMethods: availableMethods, nextChallengePromise: nextChallengePromise)
+            return
+        }
+
         if implementations.isEmpty {
             nextChallengePromise.fail(SSHClientError.allAuthenticationOptionsFailed)
             return
