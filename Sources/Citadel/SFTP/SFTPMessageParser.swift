@@ -2,12 +2,24 @@ import NIO
 
 struct SFTPMessageParser: ByteToMessageDecoder {
     typealias InboundOut = SFTPMessage
+
+    /// The largest packet accepted from the peer. OpenSSH's sftp-server caps its own at 256 KiB;
+    /// this leaves room for other implementations while making sure a peer can't make us buffer
+    /// towards a 4 GiB declared length, or wait forever for a zero one.
+    static let maximumPacketLength: UInt32 = 1024 * 1024
     
     mutating func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         let oldReaderIndex = buffer.readerIndex
         
+        guard let length = buffer.readInteger(as: UInt32.self) else {
+            return .needMoreData
+        }
+        // The length counts the type byte, so it can never be zero.
+        guard length >= 1, length <= Self.maximumPacketLength else {
+            throw SFTPError.invalidPacketLength(length)
+        }
+        
         guard
-            let length = buffer.readInteger(as: UInt32.self),
             let typeByte = buffer.readInteger(as: UInt8.self),
             var payload = buffer.readSlice(length: Int(length) - 1) // 1 for the already parsed type
         else {

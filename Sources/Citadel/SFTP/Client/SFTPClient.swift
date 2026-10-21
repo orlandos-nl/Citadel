@@ -148,11 +148,21 @@ public final class SFTPClient: Sendable {
     ///     print(item.attributes) // File attributes
     /// }
     /// ```
+    /// How many times `realpath` is re-asked before a server whose answer never settles is treated
+    /// as broken.
+    public static let maximumRealPathRounds = 8
+
+    /// The default cap on the entries (and `readdir` rounds) of one listing, so a server can't make
+    /// the client read forever.
+    public static let defaultMaximumDirectoryEntries = 1_000_000
+
     public func listDirectory(
-        atPath path: String
+        atPath path: String,
+        maximumEntries: Int = SFTPClient.defaultMaximumDirectoryEntries
     ) async throws -> [SFTPMessage.Name] {
         var path = path
         var oldPath: String
+        var realPathRounds = 0
 
         repeat {
             oldPath = path
@@ -162,6 +172,11 @@ public final class SFTPClient: Sendable {
             }
 
             path = realpath.path
+            realPathRounds += 1
+            guard path == oldPath || realPathRounds < Self.maximumRealPathRounds else {
+                self.logger.warning("SFTP server's realpath answer never settled, this is a protocol error")
+                throw SFTPError.invalidResponse
+            }
         } while path != oldPath
         
         guard case .handle(let handle) = try await sendRequest(.opendir(.init(requestId: self.allocateRequestId(), handle: path))) else {
@@ -170,6 +185,7 @@ public final class SFTPClient: Sendable {
         }
         
         var names = [SFTPMessage.Name]()
+        var entries = 0
         var response = try await sendRequest(
             .readdir(
                 .init(
@@ -180,6 +196,11 @@ public final class SFTPClient: Sendable {
         )
         
         while case .name(let name) = response {
+            // An empty reply still counts as one, so endless empty replies end too.
+            entries += max(name.components.count, 1)
+            guard entries <= maximumEntries else {
+                throw SFTPError.directoryListingTooLarge(maximumEntries: maximumEntries)
+            }
             names.append(name)
             response = try await sendRequest(
                 .readdir(
