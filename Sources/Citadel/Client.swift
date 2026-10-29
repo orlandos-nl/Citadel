@@ -204,7 +204,8 @@ public final class SSHClient {
                 originatorAddress: originatorAddress
             )
         ) { channel in
-            SSHClientSession.addHandlers(
+            settings.onChannelCreated?(channel)
+            return SSHClientSession.addHandlers(
                 on: channel,
                 inboundChannelHandler: inboundChannelHandler,
                 settings: settings

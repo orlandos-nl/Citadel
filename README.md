@@ -112,6 +112,30 @@ let targetHostClient = try await jumpHostClient.jump(to: targetHostSettings)
 
 You can chain multiple jumps this way as well.
 
+### Cancellation and application deadlines
+
+`SSHClientSettings.onChannelCreated` exposes the underlying channel before SSH
+negotiation for `connect(to:)` and `jump(to:)`. The callback runs on the channel's
+event loop. Store every supplied channel in synchronized cancellation state and close them when
+your operation is cancelled or its deadline expires. A direct connection may create
+multiple candidate sockets (Happy Eyeballs), with one callback per socket. If cancellation happened before
+the callback, close the newly supplied channel immediately. Closing during host-key
+validation or authentication fails the connection promptly, without waiting for the
+login timeout. `connect(on:settings:)` already receives a caller-owned channel and
+does not invoke this hook.
+
+For buffered commands, `executeBoundedCommand(_:maxResponseSize:onChannelCreated:)`
+provides the same ownership hook for the exec child before the exec request is sent.
+Closing this child leaves the parent SSH connection available. `maxResponseSize`
+bounds stdout and stderr together; exceeding it fails with `commandOutputTooLarge`
+and closes the child. The existing buffered `executeCommand(_:maxResponseSize:)`
+uses the same combined limit.
+
+These hooks do not automatically propagate Swift task cancellation. Callers own the
+cancellation/deadline policy, must handle a channel arriving after cancellation, and
+must translate results into their own cancellation error when they close a channel
+intentionally. Closing an SSH channel is not a guarantee that a remote process exits.
+
 ### SFTP Client
 
 To begin with SFTP, you must instantiate an SFTPClient based on your SSHClient:
