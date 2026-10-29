@@ -91,6 +91,14 @@ final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
     func errorCaught(context: ChannelHandlerContext, error: any Error) {
         self.promise.fail(error)
     }
+
+    func handlerAdded(context: ChannelHandlerContext) {
+        // NIOSSHHandler consumes channelInactive rather than forwarding it. Observe
+        // closure directly so a retained handshake cannot wait for the login timeout.
+        context.channel.closeFuture.whenComplete { [promise] _ in
+            promise.fail(ChannelError.ioOnClosedChannel)
+        }
+    }
     
     deinit {
         struct Disconnected: Error {}
@@ -108,6 +116,18 @@ public struct SSHClientSettings: Sendable {
     public var group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton
     internal var channelHandlers: [ChannelHandler & Sendable] = []
     public var connectTimeout: TimeAmount = .seconds(30)
+    /// Called once per created channel on its event loop before SSH handlers are
+    /// installed for a direct connection or jump-host child. Defaults to `nil`.
+    /// Direct connections may create multiple candidate sockets (Happy Eyeballs);
+    /// retain and close every supplied channel when cancelling the attempt.
+    ///
+    /// Retain the channel here to close it on cancellation or an application deadline,
+    /// even while host-key validation or authentication is pending. The callback may
+    /// close the channel immediately when the operation has already been cancelled.
+    /// Task cancellation alone does not close the channel; the caller owns that policy.
+    /// This hook does not run for `connect(on:settings:)`, whose caller already owns
+    /// the supplied channel.
+    public var onChannelCreated: (@Sendable (Channel) -> Void)?
 
     public init(
         host: String,
@@ -218,6 +238,7 @@ final class SSHClientSession: Sendable {
         }
         
         let bootstrap = ClientBootstrap(group: eventLoop).channelInitializer { channel in
+            settings.onChannelCreated?(channel)
             return Self.addHandlers(on: channel, inboundChannelHandler: inboundChannelHandler, settings: settings)
         }
         .connectTimeout(settings.connectTimeout)
