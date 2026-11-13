@@ -232,6 +232,12 @@ final class SSHClientSession: Sendable {
                 channel.pipeline.handler(type: NIOSSHHandler.self)
             }.map { sshHandler in
                 SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
+            }.flatMapError { error -> EventLoopFuture<SSHClientSession> in
+                // A failed handshake (host key or login refused, login timeout) closes the connection it opened;
+                // otherwise it stays open until the server's LoginGraceTime.
+                let closed = channel.eventLoop.makePromise(of: Void.self)
+                channel.close(promise: closed)
+                return closed.futureResult.recover { _ in }.flatMapThrowing { _ -> SSHClientSession in throw error }
             }
         }.get()
     }
