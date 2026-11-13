@@ -211,11 +211,18 @@ public final class SSHClient {
             )
         }
         
-        let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
-        let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
-        let session = try await handshakeHandler.authenticated.map {
-            SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
-        }.get()
+        let session: SSHClientSession
+        do {
+            let sshHandler = try await channel.pipeline.handler(type: NIOSSHHandler.self).get()
+            let handshakeHandler = try await channel.pipeline.handler(type: ClientHandshakeHandler.self).get()
+            session = try await handshakeHandler.authenticated.map {
+                SSHClientSession(channel: channel, inboundChannelHandler: inboundChannelHandler, sshHandler: sshHandler)
+            }.get()
+        } catch {
+            // A failed handshake closes the direct-tcpip channel it runs on.
+            try? await channel.close()
+            throw error
+        }
 
         return SSHClient(
             session: session,
