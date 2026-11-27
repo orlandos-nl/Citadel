@@ -73,12 +73,15 @@ final class ClientHandshakeHandler: ChannelInboundHandler, Sendable {
         promise.futureResult
     }
 
-    init(eventLoop: EventLoop, loginTimeout: TimeAmount) {
+    init(eventLoop: EventLoop, loginTimeout: TimeAmount?) {
         let promise = eventLoop.makePromise(of: Void.self)
         self.promise = promise
 
-        eventLoop.scheduleTask(deadline: .now() + loginTimeout) {
-            promise.fail(ChannelError.connectTimeout(loginTimeout))
+        if let loginTimeout {
+            let timeout = eventLoop.scheduleTask(deadline: .now() + loginTimeout) {
+                promise.fail(ChannelError.connectTimeout(loginTimeout))
+            }
+            promise.futureResult.whenComplete { _ in timeout.cancel() }
         }
     }
 
@@ -108,6 +111,10 @@ public struct SSHClientSettings: Sendable {
     public var group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton
     internal var channelHandlers: [ChannelHandler & Sendable] = []
     public var connectTimeout: TimeAmount = .seconds(30)
+    /// How long the handshake and authentication may take once connected.
+    /// `nil` waits indefinitely, for callers that bound it themselves, such
+    /// as when authentication waits for a person to confirm a signature.
+    public var loginTimeout: TimeAmount? = .seconds(10)
 
     public init(
         host: String,
@@ -169,7 +176,7 @@ final class SSHClientSession: Sendable {
     ) -> EventLoopFuture<Void> {
         let handshakeHandler = ClientHandshakeHandler(
             eventLoop: channel.eventLoop,
-            loginTimeout: .seconds(10)
+            loginTimeout: settings.loginTimeout
         )
         var clientConfiguration = SSHClientConfiguration(
             userAuthDelegate: settings.authenticationMethod(),
