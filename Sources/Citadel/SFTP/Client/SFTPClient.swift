@@ -225,6 +225,30 @@ public final class SFTPClient: Sendable {
         return attributes.attributes
     }
     
+    /// Get the attributes of a file on the SFTP server without following
+    /// a symbolic link: a link is described itself, not what it points to.
+    ///
+    /// - Parameter filePath: Path to the file
+    /// - Returns: File attributes including size, permissions, etc
+    /// - Throws: SFTPError if the file doesn't exist or request fails
+    public func getLinkAttributes(
+        at filePath: String
+    ) async throws -> SFTPFileAttributes {
+        self.logger.info("SFTP requesting link attributes at '\(filePath)'")
+
+        let response = try await sendRequest(.lstat(.init(
+            requestId: allocateRequestId(),
+            path: filePath
+        )))
+
+        guard case .attributes(let attributes) = response else {
+            self.logger.warning("SFTP server returned bad response to lstat request, this is a protocol error")
+            throw SFTPError.invalidResponse
+        }
+
+        return attributes.attributes
+    }
+
     /// Open a file at the specified path on the SFTP server.
     ///
     /// - Parameters:
